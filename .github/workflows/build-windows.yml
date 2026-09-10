@@ -1,0 +1,42 @@
+name: Build Windows desktop app
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install build/runtime dependencies
+        run: python -m pip install --upgrade pip pyinstaller ".[desktop]"
+      - name: Build native desktop EXE
+        run: >-
+          pyinstaller --noconfirm --clean --onefile --windowed
+          --name MemoryBox
+          --exclude-module PyQt5 --exclude-module PyQt6 --exclude-module PySide2 --exclude-module PySide6
+          memorybox_desktop.py
+      - name: Build CLI/MCP EXE
+        run: >-
+          pyinstaller --noconfirm --clean --onefile --console
+          --name MemoryBox-CLI
+          memorybox_main.py
+      - name: Smoke-test CLI build
+        shell: pwsh
+        run: |
+          .\dist\MemoryBox-CLI.exe list --limit 1 | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "MemoryBox-CLI smoke test failed" }
+      - name: Assemble Windows release
+        shell: pwsh
+        run: |
+          Copy-Item integrations -Destination dist\integrations -Recurse
+          Copy-Item docs -Destination dist\docs -Recurse
+          Copy-Item MemoryBox.bat,MemoryBox-MCP.cmd,MemoryBox-Import.cmd,MemoryBox-Recover.cmd,Register-Transfer-Association.cmd,Register-Transfer-Association.ps1,Install-Browser-Bridge.cmd,MemoryBox-Auto-Insurance.cmd,Enable-Auto-Insurance.cmd,Enable-Auto-Insurance.ps1,Disable-Auto-Insurance.cmd,Disable-Auto-Insurance.ps1,README.md,README.zh-CN.md,LICENSE -Destination dist\
+          Compress-Archive -Path dist\* -DestinationPath Universal-Memory-Box-Windows-${{ github.ref_name }}.zip -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Universal-Memory-Box-Windows
+          path: Universal-Memory-Box-Windows-${{ github.ref_name }}.zip

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "memory-box": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "%LOCALAPPDATA%\\MemoryBox\\MemoryBox-MCP.cmd"],
+      "timeout": 30000
+    }
+  }
+}

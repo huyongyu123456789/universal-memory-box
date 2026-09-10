@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Universal Memory Box Bridge",
+  "version": "0.13.0",
+  "description": "Save AI chats and local attachments to Memory Box, then restore complete session context.",
+  "permissions": [
+    "contextMenus",
+    "notifications",
+    "activeTab",
+    "scripting",
+    "storage",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8765/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Universal Memory Box"
+  },
+  "commands": {
+    "save-selection": {
+      "suggested_key": {
+        "default": "Alt+Shift+M"
+      },
+      "description": "Save selected text to Memory Box"
+    }
+  }
+}

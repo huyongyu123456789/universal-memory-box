@@ -1,0 +1,31 @@
+{
+  "name": "memory-box",
+  "version": "0.13.0",
+  "description": "Local persistent memory bridge for Kimi and other AI agents",
+  "keywords": [
+    "memory",
+    "mcp",
+    "agent",
+    "local-first"
+  ],
+  "author": "hyy1234567",
+  "license": "MIT",
+  "skills": "./skills/",
+  "sessionStart": {
+    "skill": "memory-box"
+  },
+  "interface": {
+    "displayName": "Memory Box",
+    "shortDescription": "Save and resume local memories across AI agents",
+    "developerName": "hyy1234567"
+  },
+  "mcpServers": {
+    "memory-box": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "%LOCALAPPDATA%\\MemoryBox\\MemoryBox-MCP.cmd"
+      ]
+    }
+  }
+}

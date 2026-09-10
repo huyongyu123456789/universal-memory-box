@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "memory-box-agent-memory"
+version = "0.13.0"
+description = "Local-first SQLite memory box and MCP bridge for AI agents"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "hyy1234567"}]
+dependencies = ["cryptography>=46,<47"]
+
+[project.optional-dependencies]
+desktop = ["pywebview>=6.1,<7", "pystray>=0.19.5,<0.20", "Pillow>=10,<13"]
+build = ["pyinstaller>=6,<7"]
+
+[project.scripts]
+memorybox = "memorybox.cli:main"
+memorybox-desktop = "memorybox.desktop:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["memorybox*"]

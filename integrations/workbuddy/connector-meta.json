@@ -1,0 +1,24 @@
+{
+  "name": "Memory Box",
+  "name_zh": "记忆盒子",
+  "name_en": "Memory Box",
+  "description": "Save, search, recall and resume local AI-agent memories.",
+  "description_zh": "在本地保存、搜索、调取并恢复 AI Agent 记忆，可跨 Agent 继续任务。",
+  "description_en": "Save, search, recall and resume local AI-agent memories across agents.",
+  "source": "hyy1234567-universal-memory-box",
+  "type": "mcp",
+  "version": "0.13.0",
+  "examples_zh": [
+    "把刚才这段对话保存到记忆盒子",
+    "列出我的论文类记忆",
+    "打开 M000007 并继续上次任务",
+    "把和 CRAB 项目有关的记忆全部调出来"
+  ],
+  "examples_en": [
+    "Save this conversation to Memory Box",
+    "List my manuscript memories",
+    "Open M000007 and continue the previous task",
+    "Retrieve all memories related to the CRAB project"
+  ],
+  "minWorkbuddyVersion": "4.24.0"
+}
