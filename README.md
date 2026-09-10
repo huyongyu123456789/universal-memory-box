@@ -6,6 +6,12 @@ Memory Box stores durable conversation/task context on the user's own machine an
 
 
 
+<p align="center">
+  <img src="docs/memory-box-system-mechanism.png" alt="Memory Box system mechanism" width="100%">
+</p>
+
+> **系统机制图 / System mechanism.** Memory Box captures user–agent interactions, organizes them into structured, searchable memory cards, stores and retrieves context locally, synchronizes encrypted context across devices and agents, and reconstructs the context needed to continue work.
+
 ## v0.14 Cross-platform apps: Windows, macOS and HarmonyOS
 
 v0.14 unifies Memory Box across three user-facing platforms with the same **red cavalry** brand icon. Windows keeps the native `MemoryBox.exe` shell; macOS adds a native `Memory Box.app` built on Cocoa/WKWebView for both Apple Silicon and Intel; HarmonyOS adds an API 26 Stage/ArkTS companion for phone, tablet and 2-in-1 devices.
