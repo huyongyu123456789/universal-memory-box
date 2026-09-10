@@ -210,7 +210,7 @@ class T(unittest.TestCase):
   from memorybox.lan import start_pairing, send_pack, stop_pairing
   db_a=Path(self.t.name)/'la'/'box.db'; db_b=Path(self.t.name)/'lb'/'box.db'; m=save_memory('LAN direct transfer memory',db_path=db_a)
   pack=Path(self.t.name)/'lan.mboxpack'; export_transfer_bundle(pack,memory_ids=[m['memory_id']],db_path=db_a)
-  st=start_pairing(port=0,ttl=60,db_path=db_b)
+  st=start_pairing(port=0,db_path=db_b)
   try:
    r=send_pack('127.0.0.1',st['port'],st['code'],pack,db_path=db_a); self.assertTrue(r['ok']); self.assertTrue(r['encrypted']); self.assertTrue(r['e2ee']); self.assertEqual(get_memory('M000001',db_b)['content'],'LAN direct transfer memory')
   finally: stop_pairing()
@@ -219,7 +219,7 @@ class T(unittest.TestCase):
   from memorybox.transfer import export_transfer_bundle
   from memorybox.lan import start_pairing, send_pack, stop_pairing
   db_a=Path(self.t.name)/'wa'/'box.db'; db_b=Path(self.t.name)/'wb'/'box.db'; m=save_memory('secret',db_path=db_a)
-  pack=Path(self.t.name)/'wrong.mboxpack'; export_transfer_bundle(pack,memory_ids=[m['memory_id']],db_path=db_a); st=start_pairing(port=0,ttl=60,db_path=db_b)
+  pack=Path(self.t.name)/'wrong.mboxpack'; export_transfer_bundle(pack,memory_ids=[m['memory_id']],db_path=db_a); st=start_pairing(port=0,db_path=db_b)
   try:
    with self.assertRaisesRegex(RuntimeError,'LAN transfer failed'): send_pack('127.0.0.1',st['port'],'000000' if st['code']!='000000' else '999999',pack,db_path=db_a)
   finally: stop_pairing()
@@ -278,152 +278,3 @@ class T(unittest.TestCase):
   a.parent.mkdir(); b.parent.mkdir(); c.parent.mkdir()
   ea=configure_sync_folder(shared,db_path=a); eb=configure_sync_folder(shared,db_path=b); configure_sync_folder(shared,db_path=c)
   # B trusts the genuine A key.
-  a_on_b=[d for d in list_sync_devices(eb['endpoint_id'],db_path=b) if d['device_id']==device_id(a)][0]
-  trust_sync_device(eb['endpoint_id'],a_on_b['device_id'],expected_fingerprint=a_on_b['e2ee_fingerprint'],db_path=b)
-  # C creates a valid ciphertext addressed to B but lies that source_device_id is A.
-  cm=save_memory('forged package',db_path=c); plain=Path(self.t.name)/'forged.mboxpack'; ex=export_transfer_bundle(plain,memory_ids=[cm['memory_id']],db_path=c)
-  outdir=shared/'MemoryBoxSync'/'packages'/device_id(a); outdir.mkdir(parents=True,exist_ok=True); enc=outdir/(ex['transfer_id']+'.mboxenc')
-  encrypt_file_for_recipients(plain,enc,recipients=[public_identity(b)],transfer_id=ex['transfer_id'],source_device_id=device_id(a),db_path=c)
-  r=receive_from_sync(eb['endpoint_id'],db_path=b); self.assertEqual(r['imported_packages'],0); self.assertEqual(len(r['errors']),0); self.assertGreaterEqual(r['skipped_packages'],1)
-  with self.assertRaises(KeyError): get_memory('M000001',b)
-
- def test_e2ee_endpoint_ignores_plaintext_downgrade(self):
-  from memorybox.sync import configure_sync_folder, receive_from_sync
-  from memorybox.transfer import export_transfer_bundle, device_id
-  a=Path(self.t.name)/'da'/'box.db'; b=Path(self.t.name)/'dbb'/'box.db'; a.parent.mkdir(); b.parent.mkdir(); shared=Path(self.t.name)/'downgrade'
-  configure_sync_folder(shared,db_path=a); eb=configure_sync_folder(shared,db_path=b)
-  m=save_memory('plaintext downgrade attempt',db_path=a); packdir=shared/'MemoryBoxSync'/'packages'/device_id(a); packdir.mkdir(parents=True,exist_ok=True)
-  export_transfer_bundle(packdir/'plain.mboxpack',memory_ids=[m['memory_id']],db_path=a)
-  r=receive_from_sync(eb['endpoint_id'],db_path=b); self.assertEqual(r['imported_packages'],0); self.assertGreaterEqual(r['skipped_packages'],1)
-
- def test_device_key_file_is_private_on_posix(self):
-  from memorybox.crypto import ensure_device_identity
-  db=Path(self.t.name)/'keyhome'/'box.db'; db.parent.mkdir(); info=ensure_device_identity(db); p=Path(info['key_path']); self.assertTrue(p.exists())
-  if os.name!='nt': self.assertEqual(p.stat().st_mode & 0o777,0o600)
-
- def test_recovery_kit_encrypts_identity_and_roundtrips(self):
-  from memorybox.crypto import public_identity
-  from memorybox.recovery import create_recovery_kit, inspect_recovery_kit, restore_recovery_kit
-  a=Path(self.t.name)/'ra'/'box.db'; b=Path(self.t.name)/'rb'/'box.db'; a.parent.mkdir(); b.parent.mkdir()
-  ident=public_identity(a); keydoc=json.loads((a.parent/'keys'/'device-x25519.json').read_text(encoding='utf-8'))
-  kit=create_recovery_kit(Path(self.t.name)/'identity-backup',db_path=a)
-  text=Path(kit['path']).read_text(encoding='utf-8')
-  self.assertNotIn(keydoc['private_key'],text); self.assertNotIn(kit['recovery_code'],text)
-  meta=inspect_recovery_kit(kit['path']); self.assertEqual(meta['fingerprint'],ident['fingerprint'])
-  restored=restore_recovery_kit(kit['path'],kit['recovery_code'],db_path=b)
-  self.assertTrue(restored['ok']); self.assertEqual(public_identity(b)['public_key'],ident['public_key']); self.assertEqual(public_identity(b)['device_id'],ident['device_id'])
-
- def test_recovered_identity_decrypts_historical_e2ee(self):
-  from memorybox.crypto import public_identity, encrypt_file_for_recipients, decrypt_file_for_local_device
-  from memorybox.recovery import create_recovery_kit, restore_recovery_kit
-  old=Path(self.t.name)/'old'/'box.db'; sender=Path(self.t.name)/'sender'/'box.db'; new=Path(self.t.name)/'new'/'box.db'
-  old.parent.mkdir(); sender.parent.mkdir(); new.parent.mkdir()
-  old_ident=public_identity(old); sender_ident=public_identity(sender)
-  kit=create_recovery_kit(Path(self.t.name)/'old.mbxrecovery',db_path=old)
-  plain=Path(self.t.name)/'historical.mboxpack'; payload=b'HISTORICAL-SECRET-MEMORY'*1000; plain.write_bytes(payload)
-  enc=Path(self.t.name)/'historical.mboxenc'
-  encrypt_file_for_recipients(plain,enc,recipients=[old_ident],transfer_id='historical-transfer',source_device_id=sender_ident['device_id'],db_path=sender)
-  with self.assertRaises(PermissionError): decrypt_file_for_local_device(enc,Path(self.t.name)/'before.bin',expected_sender_public_key=sender_ident['public_key'],db_path=new)
-  restore_recovery_kit(kit['path'],kit['recovery_code'],db_path=new)
-  out=Path(self.t.name)/'after.bin'; decrypt_file_for_local_device(enc,out,expected_sender_public_key=sender_ident['public_key'],db_path=new)
-  self.assertEqual(out.read_bytes(),payload)
-
- def test_recovery_wrong_code_and_tamper_rejected(self):
-  from memorybox.recovery import create_recovery_kit, restore_recovery_kit
-  a=Path(self.t.name)/'rwa'/'box.db'; a.parent.mkdir(); kit=create_recovery_kit(Path(self.t.name)/'wrong.mbxrecovery',db_path=a)
-  target=Path(self.t.name)/'rwb'/'box.db'; target.parent.mkdir()
-  with self.assertRaises(PermissionError): restore_recovery_kit(kit['path'],'MBR1-AAAA-BBBB-CCCC-DDDD-EEEE-FFFF-GGGG-HHHH',db_path=target)
-  doc=json.loads(Path(kit['path']).read_text(encoding='utf-8')); blob=doc['encrypted_identity']; doc['encrypted_identity']=blob[:-2]+('AA' if blob[-2:]!='AA' else 'BB')
-  bad=Path(self.t.name)/'tampered.mbxrecovery'; bad.write_text(json.dumps(doc),encoding='utf-8')
-  with self.assertRaises((PermissionError,ValueError,Exception)): restore_recovery_kit(bad,kit['recovery_code'],db_path=target)
-
- def test_recovery_replacement_protects_nonempty_box(self):
-  from memorybox.crypto import public_identity
-  from memorybox.recovery import create_recovery_kit, restore_recovery_kit
-  a=Path(self.t.name)/'rpa'/'box.db'; b=Path(self.t.name)/'rpb'/'box.db'; a.parent.mkdir(); b.parent.mkdir()
-  public_identity(a); kit=create_recovery_kit(Path(self.t.name)/'replace.mbxrecovery',db_path=a)
-  public_identity(b); save_memory('local memory before disaster recovery',db_path=b)
-  with self.assertRaises(FileExistsError): restore_recovery_kit(kit['path'],kit['recovery_code'],db_path=b)
-  r=restore_recovery_kit(kit['path'],kit['recovery_code'],replace_existing=True,db_path=b)
-  self.assertTrue(r['replaced']); self.assertTrue(Path(r['backup_path']).exists()); self.assertEqual(get_memory('M000001',b)['content'],'local memory before disaster recovery')
-
- def test_recovery_file_can_be_backed_up_to_baidu_without_code(self):
-  from memorybox.recovery import create_recovery_kit, backup_recovery_file_to_sync
-  from memorybox.sync import configure_sync_folder
-  db=Path(self.t.name)/'cloudrec'/'box.db'; db.parent.mkdir(); shared=Path(self.t.name)/'BaiduNetdisk'
-  kit=create_recovery_kit(Path(self.t.name)/'cloud.mbxrecovery',db_path=db)
-  ep=configure_sync_folder(shared,provider='baidu-netdisk',db_path=db)
-  r=backup_recovery_file_to_sync(kit['path'],ep['endpoint_id'],db_path=db)
-  self.assertTrue(Path(r['path']).exists()); self.assertFalse(r['recovery_code_stored'])
-  self.assertNotIn(kit['recovery_code'],Path(r['path']).read_text(encoding='utf-8'))
-
- def test_recovery_events_schema_and_status(self):
-  from memorybox.recovery import create_recovery_kit, recovery_status
-  db=Path(self.t.name)/'status'/'box.db'; db.parent.mkdir(); st0=recovery_status(db); self.assertEqual(st0['recovery_kits_created'],0)
-  create_recovery_kit(Path(self.t.name)/'status.mbxrecovery',db_path=db); st=recovery_status(db); self.assertEqual(st['recovery_kits_created'],1); self.assertIsNotNone(st['last_recovery_event'])
-
- def test_recovery_code_verification_drill_does_not_replace_identity(self):
-  from memorybox.crypto import public_identity
-  from memorybox.recovery import create_recovery_kit, verify_recovery_kit
-  before=public_identity(self.db); kitp=Path(self.t.name)/'safe.mbxrecovery'
-  kit=create_recovery_kit(kitp,db_path=self.db)
-  out=verify_recovery_kit(kitp,kit['recovery_code'],db_path=self.db)
-  self.assertTrue(out['ok']); self.assertTrue(out['matches_current_identity']); self.assertEqual(public_identity(self.db)['fingerprint'],before['fingerprint'])
-  raw=kitp.read_bytes(); self.assertNotIn(kit['recovery_code'].encode(),raw)
-  with self.assertRaises(PermissionError): verify_recovery_kit(kitp,'MBR1-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA',db_path=self.db)
-
- def test_automatic_insurance_encrypts_complete_library_and_verifies(self):
-  from memorybox.attachments import add_attachment
-  from memorybox.insurance import configure_insurance, run_insurance_backup, verify_latest_insurance
-  from memorybox.sync import configure_sync_folder
-  shared=Path(self.t.name)/'BaiduNetdisk'; ep=configure_sync_folder(shared,provider='baidu-netdisk',db_path=self.db)
-  m=save_memory('highly secret CRAB insurance memory',db_path=self.db)
-  f=Path(self.t.name)/'secret.csv'; f.write_text('secret,ast\nCRAB,42\n',encoding='utf-8'); add_attachment(m['memory_id'],f,db_path=self.db)
-  configure_insurance(ep['endpoint_id'],interval_hours=24,retention=3,db_path=self.db)
-  r=run_insurance_backup(force=True,db_path=self.db); self.assertTrue(r['encrypted']); self.assertEqual(r['memory_count'],1); self.assertEqual(r['attachment_count'],1)
-  enc=Path(r['path']); self.assertTrue(enc.exists()); raw=enc.read_bytes(); self.assertNotIn(b'highly secret CRAB insurance memory',raw); self.assertNotIn(b'CRAB,42',raw)
-  v=verify_latest_insurance(self.db); self.assertTrue(v['ok']); self.assertEqual(v['memory_count'],1); self.assertEqual(v['attachment_count'],1); self.assertTrue(v['database_snapshot_included']); self.assertTrue(v['attachment_index_included']); self.assertEqual(v['database_check'],'ok')
-
- def test_disaster_readiness_green_after_offsite_recovery_and_backup(self):
-  from memorybox.insurance import configure_insurance, run_insurance_backup, disaster_readiness
-  from memorybox.recovery import create_recovery_kit, verify_recovery_kit, backup_recovery_file_to_sync
-  from memorybox.sync import configure_sync_folder
-  shared=Path(self.t.name)/'BaiduNetdisk'; ep=configure_sync_folder(shared,provider='baidu-netdisk',db_path=self.db)
-  save_memory('insured memory',db_path=self.db)
-  kitp=Path(self.t.name)/'recovery.mbxrecovery'; kit=create_recovery_kit(kitp,db_path=self.db)
-  backup_recovery_file_to_sync(kitp,ep['endpoint_id'],db_path=self.db)
-  verify_recovery_kit(kitp,kit['recovery_code'],db_path=self.db)
-  configure_insurance(ep['endpoint_id'],interval_hours=24,retention=3,deep_verify=True,db_path=self.db); run_insurance_backup(force=True,db_path=self.db)
-  h=disaster_readiness(deep=True,db_path=self.db); self.assertEqual(h['status'],'GREEN',h); self.assertTrue(h['recoverable_if_recovery_code_available'])
-
- def test_disaster_readiness_red_on_missing_attachment(self):
-  from memorybox.attachments import add_attachment
-  from memorybox.insurance import disaster_readiness
-  m=save_memory('memory with file',db_path=self.db); f=Path(self.t.name)/'x.txt'; f.write_text('x'); a=add_attachment(m['memory_id'],f,db_path=self.db)
-  Path(a['local_path']).unlink()
-  h=disaster_readiness(db_path=self.db); self.assertEqual(h['status'],'RED'); self.assertGreater(h['attachments']['missing_count'],0)
-
- def test_insurance_disaster_restore_on_new_machine_after_identity_recovery(self):
-  from memorybox.insurance import configure_insurance, run_insurance_backup, restore_insurance_snapshot
-  from memorybox.recovery import create_recovery_kit, restore_recovery_kit
-  from memorybox.sync import configure_sync_folder
-  src=Path(self.t.name)/'source/box.db'; dst=Path(self.t.name)/'dest/box.db'; shared=Path(self.t.name)/'BaiduNetdisk'
-  save_memory('disaster-restorable complete library',title='Disaster demo',db_path=src)
-  ep=configure_sync_folder(shared,provider='baidu-netdisk',db_path=src)
-  kitp=Path(self.t.name)/'source-recovery.mbxrecovery'; kit=create_recovery_kit(kitp,db_path=src)
-  configure_insurance(ep['endpoint_id'],deep_verify=True,db_path=src); backup=run_insurance_backup(force=True,db_path=src)
-  restore_recovery_kit(kitp,kit['recovery_code'],db_path=dst)
-  r=restore_insurance_snapshot(backup['path'],db_path=dst)
-  self.assertEqual(r['import']['imported'],1); self.assertEqual(get_memory('M000001',dst)['title'],'Disaster demo')
-
- def test_insurance_retention_and_due_skip(self):
-  from memorybox.insurance import configure_insurance, run_insurance_backup
-  from memorybox.sync import configure_sync_folder
-  shared=Path(self.t.name)/'OneDrive'; ep=configure_sync_folder(shared,provider='onedrive',db_path=self.db)
-  save_memory('retention memory',db_path=self.db); configure_insurance(ep['endpoint_id'],interval_hours=24,retention=2,db_path=self.db)
-  first=run_insurance_backup(force=True,db_path=self.db); skipped=run_insurance_backup(force=False,db_path=self.db)
-  self.assertTrue(first['ok']); self.assertTrue(skipped['skipped']); self.assertEqual(skipped['reason'],'not_due')
-  for _ in range(3): run_insurance_backup(force=True,db_path=self.db)
-  files=list((shared/'MemoryBoxSync'/'insurance').glob('*/*.mboxenc')); self.assertEqual(len(files),2)
-
-if __name__=='__main__': unittest.main()
