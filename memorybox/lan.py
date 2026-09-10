@@ -10,6 +10,7 @@ import tempfile
 import threading
 import time
 import urllib.request
+from urllib.error import HTTPError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -189,5 +190,9 @@ def send_pack(host: str, port: int, code: str, package_path: str | os.PathLike[s
     try:
         with _LOCAL_HTTP_OPENER.open(req,timeout=timeout) as r:
             result=json.loads(r.read()); result['e2ee']=True; result['peer_fingerprint']=peer.get('e2ee_fingerprint'); return result
+    except HTTPError as exc:
+        detail = exc.read().decode('utf-8', errors='replace').strip()
+        suffix = f': {detail}' if detail else ''
+        raise RuntimeError(f"LAN transfer failed: HTTP {exc.code}{suffix}") from exc
     except Exception as exc:
         raise RuntimeError(f"LAN transfer failed: {exc}") from exc
