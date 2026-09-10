@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "memory-box-agent-memory"
 version = "0.13.0"
-description = "Local-first SQLite memory box and MCP bridge for AI agents"
+description = "通用记忆盒子（Universal Memory Box）：本地优先的 SQLite 记忆库与 AI Agent MCP 桥接工具"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
