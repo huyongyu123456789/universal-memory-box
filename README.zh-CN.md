@@ -1,4 +1,4 @@
-# Memory Box（记忆盒子）
+# 通用记忆盒子（Universal Memory Box）
 
 **本地优先、SQLite 驱动、跨 AI Agent 与网页 AI 的长期记忆盒。**
 
