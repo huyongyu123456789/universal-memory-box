@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.14.0 - 2026-09-10
+
+- Added native macOS `.app` release workflow for Apple Silicon and Intel.
+- Added Finder document associations for `.mboxpack`, `.mboxenc`, and `.mbxrecovery`.
+- Added macOS user-level start-at-login support via LaunchAgents and native WKWebView desktop runtime.
+- Added HarmonyOS API 26 Stage/ArkTS companion project for phone/tablet/2in1 with direct home-screen launch.
+- Unified Windows, macOS, and HarmonyOS branding around the red cavalry app icon.
+- Windows PyInstaller build now embeds the branded `.ico`; native file associations prefer `MemoryBox.exe`.
+- Added platform build notes and validation contracts for one-click/tap launch behavior.
+
 ## 0.13.0 - 2026-09-10
 
 - Added native Windows desktop shell using pywebview/WebView2.

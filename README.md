@@ -1,22 +1,18 @@
-# 通用记忆盒子（Universal Memory Box）
-
-## 中文说明
-
-Memory Box 是一个本地优先的 AI 记忆管理工具。它使用 SQLite 保存对话、任务和项目上下文，并通过本地 UI、CLI 与 MCP 接口连接 Kimi、WorkBuddy、Cursor、Gemini CLI、Claude Code、Codex CLI 等 AI Agent。
-
-v0.13 提供原生 Windows 桌面程序、系统托盘、浏览器桥接、端到端加密同步、自动保险和安全恢复功能。数据默认保存在本机，不依赖云端账户，也不会自动上传对话内容。
-
-- 完整中文文档：[README.zh-CN.md](README.zh-CN.md)
-- Windows 安装：双击 Install-MemoryBox.cmd
-- 启动桌面程序：python memorybox_main.py desktop
-- 启动 MCP：python memorybox_main.py mcp
-
----
+# Memory Box
 
 **Local-first SQLite memory and an MCP bridge for AI agents.**
 
 Memory Box stores durable conversation/task context on the user's own machine and exposes it through MCP, CLI, and a local UI. Save once, then recall or resume from Kimi Code, WorkBuddy, Cursor, Gemini CLI, Claude Code, Codex CLI, or any MCP-capable agent.
 
+
+
+## v0.14 Cross-platform apps: Windows, macOS and HarmonyOS
+
+v0.14 unifies Memory Box across three user-facing platforms with the same **red cavalry** brand icon. Windows keeps the native `MemoryBox.exe` shell; macOS adds a native `Memory Box.app` built on Cocoa/WKWebView for both Apple Silicon and Intel; HarmonyOS adds an API 26 Stage/ArkTS companion for phone, tablet and 2-in-1 devices.
+
+Launch behavior is explicit: double-click `MemoryBox.exe` on Windows, double-click `Memory Box.app` on macOS, and tap the Memory Box icon on HarmonyOS. Windows/macOS package associations route `.mboxpack` and `.mboxenc` into the existing verified import path; recovery packages remain human-gated. macOS release builds include `.app` and `.dmg` artifacts. HarmonyOS declares a singleton `EntryAbility` with the system home action/entity so tapping the launcher icon enters the app directly. See `docs/MULTIPLATFORM.md`.
+
+> macOS distribution note: a locally/ad-hoc signed `.app` has a valid launch bundle, but truly frictionless first-launch on arbitrary Macs requires Apple Developer ID signing and notarization. HarmonyOS likewise requires a valid DevEco/AppGallery signing profile before installing a release HAP/APP on devices.
 
 
 ## v0.13 Native Windows Desktop Shell
@@ -57,6 +53,10 @@ The recovery code remains local-only and is never exposed through MCP. Windows u
 - Local web UI bound to `127.0.0.1`
 - Agent scanner and connector helpers
 - WorkBuddy MCP + Skill connector bundle
+
+## GitHub one-click release
+
+On Windows, double-click `Publish-To-GitHub.cmd` from the extracted source folder to push `main` and the `v0.14.0` tag to the configured repository. The tag triggers Windows and macOS release builds; main also triggers CI and HarmonyOS validation. See `docs/GITHUB_RELEASE.md`.
 
 ## Quick start
 
@@ -114,7 +114,7 @@ python -m unittest discover -s tests -v
 MIT License.
 
 
-## Browser Bridge v0.13
+## Browser Bridge v0.14
 
 The included Chrome/Edge Manifest V3 extension bridges web-only AI chats to the local Memory Box. It can save selected text, capture the current visible conversation, let the user pick local attachment files, search local memories, copy a Resume Context, and inject that context into the active chat composer without automatically sending it. Browser-saved memories include the source agent and source URL. Existing databases migrate in-place to schema v8.
 
@@ -140,7 +140,7 @@ Complete-session packages are **not encrypted** in v0.7; treat them as private d
 
 ## Complete-session attachments (v0.7)
 
-Attach real PDFs, Word files, images, CSVs, code and logs to a memory with `memorybox attach` or the `memory_attach_file` MCP tool. Files are copied into a local SHA-256-addressed store and deduplicated. `session-pack` / `export-pack` automatically carries linked files inside transfer-format-v2 `.mboxpack` capsules. Import restores the bytes on the destination computer and rebuilds links even when memory IDs are remapped. Browser Bridge v0.13 also lets the user select local files while saving a web chat.
+Attach real PDFs, Word files, images, CSVs, code and logs to a memory with `memorybox attach` or the `memory_attach_file` MCP tool. Files are copied into a local SHA-256-addressed store and deduplicated. `session-pack` / `export-pack` automatically carries linked files inside transfer-format-v2 `.mboxpack` capsules. Import restores the bytes on the destination computer and rebuilds links even when memory IDs are remapped. Browser Bridge v0.14 also lets the user select local files while saving a web chat.
 
 
 ## v0.10 Key vault and disaster recovery

@@ -1,0 +1,35 @@
+name: Validate HarmonyOS project
+on:
+  workflow_dispatch:
+  push:
+    branches: ['main']
+    paths:
+      - 'platforms/harmonyos/**'
+      - 'assets/icons/harmonyos/**'
+  pull_request:
+    paths:
+      - 'platforms/harmonyos/**'
+      - 'assets/icons/harmonyos/**'
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python platforms/harmonyos/validate_project.py
+      - name: Validate branded icon
+        shell: bash
+        run: |
+          python - <<'PYCODE'
+          import struct
+          p = 'assets/icons/harmonyos/icon_1024.png'
+          with open(p, 'rb') as f:
+              assert f.read(8) == b'\x89PNG\r\n\x1a\n'
+              length = struct.unpack('>I', f.read(4))[0]
+              assert f.read(4) == b'IHDR'
+              width, height = struct.unpack('>II', f.read(8))
+          assert (width, height) == (1024, 1024)
+          print('HarmonyOS icon:', width, height)
+          PYCODE

@@ -1,6 +1,6 @@
-# Memory Box v0.13.0 Release Checklist
+# Memory Box v0.14.0 Release Checklist
 
-- [x] Python package and Browser/Kimi/WorkBuddy metadata synchronized to 0.13.0.
+- [x] Python package and Browser/Kimi/WorkBuddy metadata synchronized to 0.14.0.
 - [x] Native desktop module wraps the live v0.12 control-center APIs rather than a static mock.
 - [x] Desktop settings: minimize-to-tray, notifications and Windows login startup.
 - [x] System tray menu: Open, Sync now, Run insurance, Quit.

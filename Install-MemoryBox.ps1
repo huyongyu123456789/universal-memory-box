@@ -13,7 +13,7 @@ Write-Host "Installing Memory Box to $InstallDir"
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
 # Copy application files, excluding runtime/data/build artifacts.
-$items = @("memorybox", "integrations", "docs", "memorybox_main.py", "memorybox_desktop.py", "MemoryBox.bat", "MemoryBox-MCP.cmd", "MemoryBox-Import.cmd", "MemoryBox-Recover.cmd", "Register-Transfer-Association.cmd", "Register-Transfer-Association.ps1", "Install-Browser-Bridge.cmd", "Add-Baidu-Netdisk-Sync.cmd", "Add-Baidu-Netdisk-Sync.ps1", "MemoryBox-Auto-Insurance.cmd", "Enable-Auto-Insurance.cmd", "Enable-Auto-Insurance.ps1", "Disable-Auto-Insurance.cmd", "Disable-Auto-Insurance.ps1", "LICENSE", "README.md", "README.zh-CN.md")
+$items = @("memorybox", "integrations", "docs", "assets", "memorybox_main.py", "memorybox_desktop.py", "MemoryBox.bat", "MemoryBox-MCP.cmd", "MemoryBox-Import.cmd", "MemoryBox-Recover.cmd", "Register-Transfer-Association.cmd", "Register-Transfer-Association.ps1", "Install-Browser-Bridge.cmd", "Add-Baidu-Netdisk-Sync.cmd", "Add-Baidu-Netdisk-Sync.ps1", "MemoryBox-Auto-Insurance.cmd", "Enable-Auto-Insurance.cmd", "Enable-Auto-Insurance.ps1", "Disable-Auto-Insurance.cmd", "Disable-Auto-Insurance.ps1", "LICENSE", "README.md", "README.zh-CN.md")
 foreach ($item in $items) {
     $src = Join-Path $Source $item
     if (Test-Path $src) { Copy-Item $src -Destination $InstallDir -Recurse -Force }
@@ -47,7 +47,7 @@ if ($pth) {
     Set-Content -Path $pth.FullName -Value $updated -Encoding ASCII
 }
 
-# v0.13 desktop runtime: cryptography + pywebview + tray support live only inside Memory Box's private Python.
+# v0.14 desktop runtime: cryptography + pywebview + tray support live only inside Memory Box's private Python.
 $Py = Join-Path $RuntimeDir "python.exe"
 try {
     & $Py -c "import cryptography, webview, pystray, PIL; assert int(cryptography.__version__.split('.')[0]) >= 46" 2>$null
@@ -71,6 +71,8 @@ $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
 $Shortcut.TargetPath = Join-Path $InstallDir "MemoryBox.bat"
 $Shortcut.WorkingDirectory = $InstallDir
 $Shortcut.Description = "Local AI Agent Memory Box"
+$IconPath = Join-Path $InstallDir "assets\icons\windows\MemoryBox.ico"
+if (Test-Path $IconPath) { $Shortcut.IconLocation = $IconPath }
 $Shortcut.Save()
 
 # Create Browser Bridge setup shortcut.

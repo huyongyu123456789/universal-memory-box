@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import platform
+import plistlib
+import subprocess
 import socket
 import sys
 import threading
@@ -21,6 +23,7 @@ from .webapp import start_server
 APP_NAME = "Memory Box"
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_VALUE = "MemoryBox"
+MAC_LAUNCH_AGENT_LABEL = "com.memorybox.desktop"
 
 DEFAULT_DESKTOP_SETTINGS: dict[str, Any] = {
     "minimize_to_tray": True,
@@ -63,6 +66,22 @@ def is_windows() -> bool:
     return platform.system().lower() == "windows"
 
 
+def is_macos() -> bool:
+    return platform.system().lower() == "darwin"
+
+
+def mac_launch_agent_path() -> Path:
+    return Path.home() / "Library" / "LaunchAgents" / f"{MAC_LAUNCH_AGENT_LABEL}.plist"
+
+
+def _resource_path(relative: str) -> Path:
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
+    candidate = base / relative
+    if candidate.exists():
+        return candidate
+    return Path(__file__).resolve().parents[1] / relative
+
+
 def _startup_command(executable: str | None = None) -> str:
     exe = executable or sys.executable
     exe_path = str(Path(exe).resolve())
@@ -77,34 +96,59 @@ def _startup_command(executable: str | None = None) -> str:
 
 
 def set_start_on_login(enabled: bool, *, executable: str | None = None, home: Path | None = None) -> dict[str, Any]:
-    if not is_windows():
-        return {"supported": False, "enabled": False, "reason": "Windows only"}
-    import winreg
-    command = _startup_command(executable)
-    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+    settings = load_desktop_settings(home)
+    if is_windows():
+        import winreg
+        command = _startup_command(executable)
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+            if enabled:
+                winreg.SetValueEx(key, RUN_VALUE, 0, winreg.REG_SZ, command)
+            else:
+                try:
+                    winreg.DeleteValue(key, RUN_VALUE)
+                except FileNotFoundError:
+                    pass
+        settings["start_on_login"] = bool(enabled)
+        save_desktop_settings(settings, home)
+        return {"supported": True, "enabled": bool(enabled), "command": command if enabled else None, "platform": "Windows"}
+
+    if is_macos():
+        plist_path = mac_launch_agent_path()
+        plist_path.parent.mkdir(parents=True, exist_ok=True)
+        exe = str(Path(executable or sys.executable).resolve())
         if enabled:
-            winreg.SetValueEx(key, RUN_VALUE, 0, winreg.REG_SZ, command)
+            payload = {
+                "Label": MAC_LAUNCH_AGENT_LABEL,
+                "ProgramArguments": [exe, "--minimized"],
+                "RunAtLoad": True,
+                "KeepAlive": False,
+                "ProcessType": "Interactive",
+            }
+            plist_path.write_bytes(plistlib.dumps(payload, fmt=plistlib.FMT_XML, sort_keys=True))
         else:
             try:
-                winreg.DeleteValue(key, RUN_VALUE)
+                plist_path.unlink()
             except FileNotFoundError:
                 pass
-    settings = load_desktop_settings(home)
-    settings["start_on_login"] = bool(enabled)
-    save_desktop_settings(settings, home)
-    return {"supported": True, "enabled": bool(enabled), "command": command if enabled else None}
+        settings["start_on_login"] = bool(enabled)
+        save_desktop_settings(settings, home)
+        return {"supported": True, "enabled": bool(enabled), "launch_agent": str(plist_path) if enabled else None, "platform": "macOS"}
+
+    return {"supported": False, "enabled": False, "reason": "Start-on-login is currently supported on Windows and macOS."}
 
 
 def get_start_on_login(*, home: Path | None = None) -> bool:
-    if not is_windows():
-        return bool(load_desktop_settings(home).get("start_on_login", False))
-    try:
-        import winreg
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_READ) as key:
-            winreg.QueryValueEx(key, RUN_VALUE)
-            return True
-    except Exception:
-        return False
+    if is_windows():
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_READ) as key:
+                winreg.QueryValueEx(key, RUN_VALUE)
+                return True
+        except Exception:
+            return False
+    if is_macos():
+        return mac_launch_agent_path().exists()
+    return bool(load_desktop_settings(home).get("start_on_login", False))
 
 
 def process_open_path(path: str | os.PathLike[str], *, db_path=None) -> dict[str, Any]:
@@ -145,11 +189,16 @@ def _free_port() -> int:
 
 def _make_tray_icon_image():
     from PIL import Image, ImageDraw
+    icon_path = _resource_path("assets/icons/master.png")
+    if icon_path.exists():
+        try:
+            return Image.open(icon_path).convert("RGBA").resize((128, 128), Image.Resampling.LANCZOS)
+        except Exception:
+            pass
     image = Image.new("RGBA", (128, 128), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
     draw.rounded_rectangle((10, 10, 118, 118), radius=30, fill=(29, 29, 31, 255))
-    draw.rounded_rectangle((31, 31, 97, 97), radius=18, outline=(255, 255, 255, 235), width=7)
-    draw.line((48, 63, 63, 78, 83, 49), fill=(255, 255, 255, 245), width=7, joint="curve")
+    draw.polygon([(24,82),(42,38),(69,26),(98,42),(109,71),(88,96),(56,105)], fill=(220,38,38,255))
     return image
 
 
@@ -418,7 +467,8 @@ def run_desktop(paths: Iterable[str] | None = None, *, minimized: bool = False, 
 
     try:
         tray.run_detached()
-        webview.start(desktop_start, window, gui="edgechromium", debug=False)
+        gui = "edgechromium" if is_windows() else None
+        webview.start(desktop_start, window, gui=gui, debug=False)
     finally:
         bridge.quitting = True
         try:

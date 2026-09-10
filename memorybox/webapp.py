@@ -7,6 +7,8 @@ import tempfile
 import threading
 import urllib.parse
 import webbrowser
+import sys
+from pathlib import Path
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -26,6 +28,14 @@ from .insurance import InsuranceMonitor, configure_insurance, disable_insurance,
 from .ui import HTML
 
 
+def _brand_icon_path() -> Path:
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
+    p = base / "assets" / "icons" / "master.png"
+    if p.exists():
+        return p
+    return Path(__file__).resolve().parents[1] / "assets" / "icons" / "master.png"
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self,obj:Any,status=200,ctype="application/json; charset=utf-8"):
         data=(obj if isinstance(obj,(bytes,bytearray)) else (obj.encode() if isinstance(obj,str) else json.dumps(obj,ensure_ascii=False).encode()))
@@ -39,6 +49,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             u=urllib.parse.urlparse(self.path); p=u.path; q=urllib.parse.parse_qs(u.query)
             if p=="/": return self._send(HTML.replace('__CATEGORIES__', json.dumps(CATEGORY_LABELS, ensure_ascii=False)).replace('__VERSION__', __version__),ctype="text/html; charset=utf-8")
+            if p=="/brand-icon.png":
+                fp=_brand_icon_path()
+                if not fp.is_file(): return self._send({"error":"brand icon not found"},404)
+                return self._send(fp.read_bytes(),ctype="image/png")
             if p=="/api/health": return self._send({"ok":True,"name":"Memory Box","version":__version__})
             if p=="/api/categories": return self._send(category_counts())
             if p=="/api/agents": return self._send(scan_agents())

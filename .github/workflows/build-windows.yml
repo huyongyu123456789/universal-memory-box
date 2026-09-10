@@ -17,6 +17,8 @@ jobs:
         run: >-
           pyinstaller --noconfirm --clean --onefile --windowed
           --name MemoryBox
+          --icon assets/icons/windows/MemoryBox.ico
+          --add-data "assets/icons/master.png;assets/icons"
           --exclude-module PyQt5 --exclude-module PyQt6 --exclude-module PySide2 --exclude-module PySide6
           memorybox_desktop.py
       - name: Build CLI/MCP EXE

@@ -72,7 +72,7 @@ class T(unittest.TestCase):
  def test_browser_extension_v05_contract(self):
   ext=ROOT/'integrations'/'browser-extension'
   manifest=json.loads((ext/'manifest.json').read_text(encoding='utf-8'))
-  self.assertEqual(manifest['version'],'0.13.0')
+  self.assertEqual(manifest['version'],'0.14.0')
   self.assertIn('scripting',manifest['permissions'])
   self.assertIn('save-selection',manifest['commands'])
   bg=(ext/'background.js').read_text(encoding='utf-8')
@@ -244,7 +244,7 @@ class T(unittest.TestCase):
    try:
     base=f'http://127.0.0.1:{srv.server_address[1]}'
     html=urllib.request.urlopen(base+'/').read().decode()
-    for token in ['Private AI memory hub','data-view="home"','自动保险','设备同步','灾难恢复','memorybox-theme','prefers-color-scheme:dark','v0.13.0']:
+    for token in ['Private AI memory hub','data-view="home"','自动保险','设备同步','灾难恢复','memorybox-theme','prefers-color-scheme:dark','v0.14.0']:
      self.assertIn(token,html)
     self.assertNotIn('__VERSION__',html)
    finally:
@@ -291,5 +291,36 @@ class T(unittest.TestCase):
   with tempfile.TemporaryDirectory() as td:
    p=Path(td)/'test.mbxrecovery'; p.write_bytes(b'placeholder')
    r=process_open_path(p); self.assertEqual(r['kind'],'recovery'); self.assertTrue(r['requires_user_secret'])
+
+ def test_v14_red_cavalry_brand_assets(self):
+  from PIL import Image
+  master=ROOT/'assets'/'icons'/'master.png'
+  ico=ROOT/'assets'/'icons'/'windows'/'MemoryBox.ico'
+  self.assertTrue(master.is_file()); self.assertTrue(ico.is_file())
+  with Image.open(master) as im:
+   self.assertEqual(im.size,(1024,1024))
+  self.assertIn('/brand-icon.png',(ROOT/'memorybox'/'ui.py').read_text(encoding='utf-8'))
+
+ def test_v14_macos_release_contract(self):
+  wf=(ROOT/'.github/workflows/build-macos.yml').read_text(encoding='utf-8')
+  desktop=(ROOT/'memorybox'/'desktop.py').read_text(encoding='utf-8')
+  plist=(ROOT/'platforms'/'macos'/'postprocess_plist.py').read_text(encoding='utf-8')
+  for token in ['macos-15','macos-15-intel','--windowed','--argv-emulation','Memory Box.app','hdiutil create','codesign --verify']:
+   self.assertIn(token,wf)
+  self.assertIn('MAC_LAUNCH_AGENT_LABEL',desktop); self.assertIn('is_macos()',desktop)
+  self.assertIn('CFBundleDocumentTypes',plist); self.assertIn('mboxpack',plist); self.assertIn('mboxenc',plist)
+
+ def test_v14_windows_uses_red_cavalry_icon_and_native_association(self):
+  wf=(ROOT/'.github/workflows/build-windows.yml').read_text(encoding='utf-8')
+  assoc=(ROOT/'Register-Transfer-Association.ps1').read_text(encoding='utf-8')
+  self.assertIn('--icon assets/icons/windows/MemoryBox.ico',wf)
+  self.assertIn('MemoryBox.exe',assoc)
+
+ def test_v14_harmonyos_launch_contract(self):
+  import subprocess
+  r=subprocess.run([sys.executable,str(ROOT/'platforms'/'harmonyos'/'validate_project.py')],capture_output=True,text=True)
+  self.assertEqual(r.returncode,0,r.stderr); self.assertIn('PASS',r.stdout)
+  page=(ROOT/'platforms'/'harmonyos'/'entry'/'src'/'main'/'ets'/'pages'/'Index.ets').read_text(encoding='utf-8')
+  self.assertIn('Memory Box',page); self.assertIn('快速保存',page)
 
 if __name__=='__main__': unittest.main()

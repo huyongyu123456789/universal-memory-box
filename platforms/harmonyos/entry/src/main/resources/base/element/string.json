@@ -1,0 +1,7 @@
+{
+  "string": [
+    { "name": "module_desc", "value": "Memory Box HarmonyOS" },
+    { "name": "EntryAbility_desc", "value": "Memory Box 主界面" },
+    { "name": "EntryAbility_label", "value": "Memory Box" }
+  ]
+}

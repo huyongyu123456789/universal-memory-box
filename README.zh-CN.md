@@ -1,9 +1,22 @@
-# 通用记忆盒子（Universal Memory Box）
+# Memory Box（记忆盒子）
 
 **本地优先、SQLite 驱动、跨 AI Agent 与网页 AI 的长期记忆盒。**
 
 Memory Box 把聊天中的关键上下文保存到你自己的电脑，并通过 MCP / CLI / 本地 REST 接口提供给不同 AI Agent。目标是让你只说一句“把这段保存下来”，以后换 Agent、换会话、换项目时仍可调出并继续。
 
+
+
+## GitHub 一键发布
+
+Windows 解压源码后可直接双击 `Publish-To-GitHub.cmd`，脚本会把 `main` 和 `v0.14.0` 标签推送到已配置的 GitHub 仓库。标签会触发 Windows 与 macOS 构建，`main` 推送同时触发 CI 和 HarmonyOS 工程校验。详见 `docs/GITHUB_RELEASE.md`。
+
+## v0.14：Windows + macOS + HarmonyOS 多平台应用
+
+v0.14 把 Memory Box 正式扩展为三端应用，并统一使用**红色骑兵**图标。Windows 继续使用无黑框的 `MemoryBox.exe`；macOS 新增原生 `Memory Box.app`，基于 Cocoa/WKWebView，分别构建 Apple Silicon 与 Intel 版本；HarmonyOS 新增 API 26.0.0 Stage/ArkTS 原生 companion，适配手机、平板和 2in1。
+
+启动方式已经按系统习惯固定：Windows **双击 `MemoryBox.exe`**；macOS **双击 `Memory Box.app`**；HarmonyOS 安装后**点击桌面 Memory Box 图标**直接进入 `EntryAbility`。Windows/macOS 的 `.mboxpack`、`.mboxenc` 会走现有校验导入链；`.mbxrecovery` 仍保留人工恢复码确认。macOS Release 会同时产出 `.app` ZIP 与 `.dmg`。详见 `docs/MULTIPLATFORM.md`。
+
+> 两个必须如实说明的发布条件：macOS 要想在任意陌生 Mac 上首次就无 Gatekeeper 阻拦地双击打开，需要 Apple Developer ID 签名并完成 notarization；HarmonyOS Release HAP/APP 需要 DevEco Studio/AppGallery Connect 的有效签名配置后才能安装到真机。工程的启动入口已经配置好，但签名凭据不能凭空生成。
 
 
 ## v0.13：真正的 Windows 桌面程序壳
@@ -40,7 +53,7 @@ Memory Box 现在可以按周期把**整个记忆库、历史版本、元数据�
 - “把与某项目有关的记忆都调出来”并自动组合成 Resume Context
 - 从 Universal Agent Memory v0.3 的 JSON vault 导入
 - MCP Server：Agent 可直接调用保存、列表、打开、追加、恢复、合并等工具
-- Browser Bridge v0.13：ChatGPT/Kimi/Claude/Gemini/DeepSeek/豆包/元宝网页端可选中保存、保存当前聊天、选择本地附件、搜索旧记忆并把 Resume Context 填回当前聊天输入框
+- Browser Bridge v0.14：ChatGPT/Kimi/Claude/Gemini/DeepSeek/豆包/元宝网页端可选中保存、保存当前聊天、选择本地附件、搜索旧记忆并把 Resume Context 填回当前聊天输入框
 - 完整会话胶囊：PDF、Word、图片、CSV、代码、日志等附件与记忆一起打包迁移
 - 附件去重：按 SHA-256 内容寻址，同一文件被多条记忆引用时只存一份
 - 网页来源追溯：保存 `source_agent + source_uri`，旧数据库自动迁移到 schema v8
@@ -162,7 +175,7 @@ memorybox session-pack TransferFolder M000007 --folder
 
 > `.mboxpack` v2 是纯数据格式，不执行包内代码。附件和元数据都会校验 SHA-256，且默认不导出原电脑绝对路径。当前版本未加密，敏感包仍应按私密文件处理。
 
-## Browser Bridge v0.13：网页 AI + 附件
+## Browser Bridge v0.14：网页 AI + 附件
 
 网页端继续支持“保存选中对话 / 保存当前聊天 / 搜索 / 恢复到当前输入框”，并新增**本地附件选择**。你可以在扩展中选 PDF、Word、图片、CSV、代码文件等，然后点击“保存当前聊天”，文件会挂在新建记忆下并进入同一个本地附件库。
 

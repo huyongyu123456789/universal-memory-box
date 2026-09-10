@@ -1,0 +1,6 @@
+{
+  "string": [
+    { "name": "app_name", "value": "Memory Box" },
+    { "name": "app_description", "value": "跨 Agent、跨设备的本地优先记忆盒子" }
+  ]
+}
