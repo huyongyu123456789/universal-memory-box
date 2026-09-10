@@ -1,5 +1,18 @@
 # Memory Box
 
+## 中文说明
+
+Memory Box 是一个本地优先的 AI 记忆管理工具。它使用 SQLite 保存对话、任务和项目上下文，并通过本地 UI、CLI 与 MCP 接口连接 Kimi、WorkBuddy、Cursor、Gemini CLI、Claude Code、Codex CLI 等 AI Agent。
+
+v0.13 提供原生 Windows 桌面程序、系统托盘、浏览器桥接、端到端加密同步、自动保险和安全恢复功能。数据默认保存在本机，不依赖云端账户，也不会自动上传对话内容。
+
+- 完整中文文档：[README.zh-CN.md](README.zh-CN.md)
+- Windows 安装：双击 Install-MemoryBox.cmd
+- 启动桌面程序：python memorybox_main.py desktop
+- 启动 MCP：python memorybox_main.py mcp
+
+---
+
 **Local-first SQLite memory and an MCP bridge for AI agents.**
 
 Memory Box stores durable conversation/task context on the user's own machine and exposes it through MCP, CLI, and a local UI. Save once, then recall or resume from Kimi Code, WorkBuddy, Cursor, Gemini CLI, Claude Code, Codex CLI, or any MCP-capable agent.
