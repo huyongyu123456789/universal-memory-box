@@ -25,15 +25,17 @@ from .db import (
     list_memories,
     utc_now,
 )
+from .projects import _next_project_id
 
 TRANSFER_FORMAT = "memorybox-transfer"
-TRANSFER_VERSION = 2
-SUPPORTED_TRANSFER_VERSIONS = {1, 2}
+TRANSFER_VERSION = 3
+SUPPORTED_TRANSFER_VERSIONS = {1, 2, 3}
 MAX_PACKAGE_BYTES = int(os.environ.get("MEMORYBOX_MAX_PACKAGE_BYTES", str(2 * 1024 * 1024 * 1024)))
 MAX_ENTRY_BYTES = int(os.environ.get("MEMORYBOX_MAX_ENTRY_BYTES", str(1024 * 1024 * 1024)))
 MAX_MEMORIES = 100_000
 MAX_ATTACHMENTS = 100_000
 _ROOT_FILES = {"manifest.json", "memories.json", "resume.md", "viewer.html", "README.txt"}
+_PROJECTS_FILE = "projects.json"
 _ATTACH_INDEX = "attachments/index.json"
 _BLOB_RE = re.compile(r"^attachments/blobs/([0-9a-f]{64})$")
 
@@ -121,6 +123,29 @@ def _select_cards(*, memory_ids: Iterable[str] | None = None, query: str | None 
     if len(cards) > MAX_MEMORIES:
         raise ValueError("too many memories for one transfer package")
     return cards
+
+
+def _project_catalog(cards: list[dict[str, Any]], db_path=None) -> list[dict[str, Any]]:
+    mids=[str(c.get("memory_id") or "").upper() for c in cards if c.get("memory_id")]
+    if not mids:
+        return []
+    groups: dict[str, dict[str, Any]] = {}
+    with _connect(db_path) as con:
+        for i in range(0,len(mids),800):
+            chunk=mids[i:i+800]
+            ph=','.join('?'*len(chunk))
+            rows=con.execute(f"""SELECT p.*,m.memory_id,pm.role,pm.added_at FROM project_memories pm
+                JOIN projects p ON p.id=pm.project_id_fk JOIN memories m ON m.id=pm.memory_id_fk
+                WHERE m.memory_id IN ({ph}) ORDER BY p.project_id,m.memory_id""",chunk).fetchall()
+            for r in rows:
+                pid=str(r['project_id'])
+                item=groups.setdefault(pid,{
+                    "project_id":pid,"name":r['name'],"summary":r['summary'],"current_state":r['current_state'],
+                    "next_action":r['next_action'],"status":r['status'],"created_at":r['created_at'],"updated_at":r['updated_at'],
+                    "archived":bool(r['archived']),"links":[]
+                })
+                item['links'].append({"memory_id":r['memory_id'],"role":r['role'],"added_at":r['added_at']})
+    return list(groups.values())
 
 
 def _attachment_catalog(cards: list[dict[str, Any]], db_path=None) -> list[dict[str, Any]]:
@@ -233,8 +258,10 @@ def export_transfer_bundle(output: str | os.PathLike[str], *, memory_ids: Iterab
     cards = [_card_for_export(c, db_path) for c in _select_cards(
         memory_ids=memory_ids, query=query, category=category, include_archived=include_archived, db_path=db_path)]
     attachments = _attachment_catalog(cards, db_path)
+    projects = _project_catalog(cards, db_path)
     transfer_id = str(uuid.uuid4())
     memories_b = _json_bytes({"memories": cards})
+    projects_b = _json_bytes({"projects": projects})
     attachments_b = _json_bytes({"attachments": attachments})
     resume_b = _portable_context(cards, attachments).encode("utf-8")
     manifest = {
@@ -246,6 +273,7 @@ def export_transfer_bundle(output: str | os.PathLike[str], *, memory_ids: Iterab
         "source_device_id": device_id(db_path),
         "memory_count": len(cards),
         "attachment_count": len(attachments),
+        "project_count": len(projects),
         "attachment_bytes": sum(int(a["size_bytes"]) for a in attachments),
         "scope": {"memory_ids": list(memory_ids or []), "query": query or "", "category": category or "", "include_archived": bool(include_archived)},
         "checksums": {},
@@ -254,6 +282,7 @@ def export_transfer_bundle(output: str | os.PathLike[str], *, memory_ids: Iterab
     readme_b = _readme_text(manifest).encode("utf-8")
     data_files: dict[str, bytes] = {
         "memories.json": memories_b,
+        _PROJECTS_FILE: projects_b,
         _ATTACH_INDEX: attachments_b,
         "resume.md": resume_b,
         "viewer.html": viewer_b,
@@ -301,11 +330,13 @@ def export_transfer_bundle(output: str | os.PathLike[str], *, memory_ids: Iterab
                 zf.write(src, arcname=name)
         kind = "mboxpack"
     return {"ok": True, "path": str(out.resolve()), "kind": kind, "transfer_id": transfer_id,
-            "memory_count": len(cards), "attachment_count": len(attachments), "attachment_bytes": manifest["attachment_bytes"], "manifest": manifest}
+            "memory_count": len(cards), "project_count": len(projects), "attachment_count": len(attachments), "attachment_bytes": manifest["attachment_bytes"], "manifest": manifest}
 
 
 def _allowed_dynamic(name: str, version: int) -> bool:
     if name in _ROOT_FILES:
+        return True
+    if version >= 3 and name == _PROJECTS_FILE:
         return True
     if version >= 2 and (name == _ATTACH_INDEX or _BLOB_RE.fullmatch(name)):
         return True
@@ -340,7 +371,8 @@ def _read_package(path: str | os.PathLike[str]) -> tuple[dict[str, Any], dict[st
 
     files: dict[str, bytes] = {"manifest.json": manifest_raw}
     if p.is_dir():
-        for name in _ROOT_FILES | ({_ATTACH_INDEX} if version >= 2 else set()):
+        extra=({_ATTACH_INDEX} if version >= 2 else set()) | ({_PROJECTS_FILE} if version >= 3 else set())
+        for name in _ROOT_FILES | extra:
             fp = p / name
             if fp.is_file():
                 if fp.stat().st_size > MAX_ENTRY_BYTES:
@@ -386,14 +418,19 @@ def inspect_transfer_bundle(path: str | os.PathLike[str]) -> dict[str, Any]:
     attachments = []
     if _ATTACH_INDEX in files:
         attachments = (json.loads(files[_ATTACH_INDEX].decode("utf-8")).get("attachments") or [])
+    projects = []
+    if _PROJECTS_FILE in files:
+        projects = (json.loads(files[_PROJECTS_FILE].decode("utf-8")).get("projects") or [])
     return {
         "ok": True,
         "manifest": manifest,
         "memory_count": len(cards),
         "attachment_count": len(attachments),
+        "project_count": len(projects),
         "attachment_bytes": sum(int(a.get("size_bytes") or 0) for a in attachments),
         "titles": [{"memory_id": c.get("memory_id"), "title": c.get("title"), "category": c.get("category")} for c in cards[:100]],
         "attachments": [{"sha256": a.get("sha256"), "original_name": a.get("original_name"), "size_bytes": a.get("size_bytes"), "mime_type": a.get("mime_type")} for a in attachments[:100]],
+        "projects": [{"project_id": p.get("project_id"), "name": p.get("name"), "status": p.get("status"), "memory_count": len(p.get("links") or [])} for p in projects[:100]],
     }
 
 
@@ -409,6 +446,11 @@ def import_transfer_bundle(path: str | os.PathLike[str], *, db_path=None, open_r
     cards = payload.get("memories") or []
     if not isinstance(cards, list) or len(cards) > MAX_MEMORIES:
         raise ValueError("invalid or oversized memory payload")
+    project_items: list[dict[str, Any]] = []
+    if _PROJECTS_FILE in files:
+        project_items = json.loads(files[_PROJECTS_FILE].decode("utf-8")).get("projects") or []
+        if not isinstance(project_items, list) or len(project_items) > MAX_MEMORIES:
+            raise ValueError("invalid or oversized project payload")
     attachment_items: list[dict[str, Any]] = []
     if _ATTACH_INDEX in files:
         attachment_items = json.loads(files[_ATTACH_INDEX].decode("utf-8")).get("attachments") or []
@@ -419,7 +461,8 @@ def import_transfer_bundle(path: str | os.PathLike[str], *, db_path=None, open_r
     result = {"ok": True, "transfer_id": transfer_id, "source_device_id": source_device,
               "local_device_id": local_device, "imported": 0, "skipped": 0, "remapped": 0,
               "attachments_imported": 0, "attachments_linked": 0, "attachment_bytes": 0,
-              "mapping": {}, "replay_path": ""}
+              "projects_imported": 0, "projects_skipped": 0, "projects_remapped": 0,
+              "mapping": {}, "project_mapping": {}, "replay_path": ""}
 
     init_db(db_path)
     for card in cards:
@@ -480,6 +523,46 @@ def import_transfer_bundle(path: str | os.PathLike[str], *, db_path=None, open_r
                 con.execute("INSERT OR IGNORE INTO transfer_origins(source_device_id,origin_memory_id,local_memory_id,transfer_id,imported_at) VALUES(?,?,?,?,?)",
                             (source_device, origin_id, local_id, transfer_id, utc_now()))
                 result["mapping"][origin_id] = local_id
+
+    # Restore first-class project workspaces and remap their memory links.
+    for project in project_items:
+        origin_pid=str(project.get("project_id") or "").upper()
+        if not re.fullmatch(r"P\d{6}",origin_pid):
+            origin_pid=""
+        with _connect(db_path) as con:
+            con.execute("BEGIN IMMEDIATE")
+            mapped=con.execute("SELECT local_project_id FROM project_origins WHERE source_device_id=? AND origin_project_id=?",(source_device,origin_pid)).fetchone() if origin_pid else None
+            if mapped:
+                local_pid=str(mapped[0]); result["projects_skipped"]+=1
+            else:
+                existing=con.execute("SELECT * FROM projects WHERE project_id=?",(origin_pid,)).fetchone() if origin_pid else None
+                same=False
+                if existing:
+                    core_existing=(existing['name'],existing['summary'],existing['current_state'],existing['next_action'],existing['status'])
+                    core_in=(str(project.get('name') or ''),str(project.get('summary') or ''),str(project.get('current_state') or ''),str(project.get('next_action') or ''),str(project.get('status') or 'active'))
+                    same=core_existing==core_in
+                if existing and source_device==local_device:
+                    local_pid=origin_pid; result["projects_skipped"]+=1
+                elif existing and same:
+                    local_pid=origin_pid; result["projects_skipped"]+=1
+                else:
+                    local_pid=_next_project_id(con) if existing or not origin_pid else origin_pid
+                    if existing: result["projects_remapped"]+=1
+                    now=utc_now(); created=str(project.get('created_at') or now); updated=str(project.get('updated_at') or created)
+                    con.execute("INSERT INTO projects(project_id,name,summary,current_state,next_action,status,created_at,updated_at,archived) VALUES(?,?,?,?,?,?,?,?,?)",
+                        (local_pid,str(project.get('name') or 'Imported project'),str(project.get('summary') or ''),str(project.get('current_state') or ''),str(project.get('next_action') or ''),str(project.get('status') or 'active'),created,updated,1 if project.get('archived') else 0))
+                    result["projects_imported"]+=1
+                if origin_pid:
+                    con.execute("INSERT OR IGNORE INTO project_origins(source_device_id,origin_project_id,local_project_id,transfer_id,imported_at) VALUES(?,?,?,?,?)",(source_device,origin_pid,local_pid,transfer_id,utc_now()))
+            if origin_pid: result["project_mapping"][origin_pid]=local_pid
+            prow=con.execute("SELECT id FROM projects WHERE project_id=?",(local_pid,)).fetchone()
+            if prow:
+                for link in project.get('links') or []:
+                    local_mid=result["mapping"].get(str(link.get('memory_id') or '').upper())
+                    if not local_mid: continue
+                    mrow=con.execute("SELECT id FROM memories WHERE memory_id=?",(local_mid,)).fetchone()
+                    if mrow:
+                        con.execute("INSERT OR REPLACE INTO project_memories(project_id_fk,memory_id_fk,role,added_at) VALUES(?,?,?,?)",(prow['id'],mrow['id'],str(link.get('role') or 'context'),str(link.get('added_at') or utc_now())))
 
     # Import verified attachment blobs and rebuild memory links using the origin->local mapping.
     for a in attachment_items:

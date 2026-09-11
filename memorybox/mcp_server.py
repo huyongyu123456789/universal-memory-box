@@ -12,9 +12,29 @@ from .sync import configure_sync_folder, detect_sync_folders, list_sync_devices,
 from .lan import discover_peers, pairing_status, send_pack, start_pairing, stop_pairing
 from .crypto import public_identity
 from .insurance import insurance_settings, run_insurance_backup, disaster_readiness, verify_latest_insurance
+from .projects import create_project, list_projects, get_project, update_project, add_memory_to_project, remove_memory_from_project, project_resume, suggest_project_memories, refresh_project_insights
+from .retrieval import smart_search
+from .semantic import backend_status, rebuild_vectors, vector_search
+from .dedup import find_duplicates, scan_duplicates, merge_duplicate_memories
 
 TOOLS = [
-    {"name":"memory_save","description":"Save the relevant part of the current conversation into the local Memory Box. Use when the user says save/remember this conversation.","inputSchema":{"type":"object","properties":{"content":{"type":"string"},"title":{"type":"string"},"summary":{"type":"string"},"category":{"type":"string"},"tags":{"type":"array","items":{"type":"string"}},"source_agent":{"type":"string"},"source_uri":{"type":"string"}},"required":["content"]}},
+    {"name":"memory_semantic_status","description":"Show the active fully-local vector backend. The default hashing backend is dependency-free; an existing local SentenceTransformer directory can be configured without cloud calls.","inputSchema":{"type":"object","properties":{}}},
+    {"name":"memory_vector_rebuild","description":"Refresh the local vector cache for all or selected memories. Safe to rerun and does not send memory text to a remote service.","inputSchema":{"type":"object","properties":{"memory_ids":{"type":"array","items":{"type":"string"}}}}},
+    {"name":"memory_vector_search","description":"Search the local memory vault using vector similarity only. Useful as a semantic/approximate retrieval signal alongside normal smart search.","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"project_id":{"type":"string"},"category":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":200}},"required":["query"]}},
+    {"name":"memory_dedup_find","description":"Find likely duplicate or near-duplicate memories for one memory. This only suggests candidates and never merges automatically.","inputSchema":{"type":"object","properties":{"memory_id":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":100},"threshold":{"type":"number","minimum":0,"maximum":1}},"required":["memory_id"]}},
+    {"name":"memory_dedup_scan","description":"Scan recent active memories for duplicate candidates. This is read-only and returns reviewable pairs.","inputSchema":{"type":"object","properties":{"limit":{"type":"integer","minimum":2,"maximum":1000},"threshold":{"type":"number","minimum":0,"maximum":1}}}},
+    {"name":"memory_dedup_merge","description":"Merge reviewed duplicate memories into one consolidated memory. Sources are preserved unless archive_sources is explicitly true; project links are carried forward.","inputSchema":{"type":"object","properties":{"memory_ids":{"type":"array","items":{"type":"string"},"minItems":2},"title":{"type":"string"},"archive_sources":{"type":"boolean"}},"required":["memory_ids"]}},
+    {"name":"memory_project_refresh","description":"Refresh derived project summary/state/next-action fields from linked memories without overwriting user-authored project fields.","inputSchema":{"type":"object","properties":{"project_id":{"type":"string"}},"required":["project_id"]}},
+    {"name":"memory_smart_search","description":"Rank memories locally using hybrid lexical/metadata retrieval plus a local vector similarity signal, project context, recency, and pin/favorite signals. No cloud embedding service is used.","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"project_id":{"type":"string"},"category":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":200}},"required":["query"]}},
+    {"name":"memory_project_create","description":"Create a first-class Memory Box project workspace with summary, current state and next action.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"summary":{"type":"string"},"current_state":{"type":"string"},"next_action":{"type":"string"},"status":{"type":"string","enum":["active","paused","completed"]}},"required":["name"]}},
+    {"name":"memory_projects","description":"List Memory Box project workspaces and their memory counts.","inputSchema":{"type":"object","properties":{"status":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":500}}}},
+    {"name":"memory_project_get","description":"Open a project workspace, including linked memories and continuity fields.","inputSchema":{"type":"object","properties":{"project_id":{"type":"string"}},"required":["project_id"]}},
+    {"name":"memory_project_update","description":"Update a project's summary, current state, next action, or status.","inputSchema":{"type":"object","properties":{"project_id":{"type":"string"},"name":{"type":"string"},"summary":{"type":"string"},"current_state":{"type":"string"},"next_action":{"type":"string"},"status":{"type":"string","enum":["active","paused","completed","archived"]}},"required":["project_id"]}},
+    {"name":"memory_project_add","description":"Link an existing memory to a project workspace.","inputSchema":{"type":"object","properties":{"project_id":{"type":"string"},"memory_id":{"type":"string"},"role":{"type":"string"}},"required":["project_id","memory_id"]}},
+    {"name":"memory_project_remove","description":"Remove a memory link from a project without deleting the memory itself.","inputSchema":{"type":"object","properties":{"project_id":{"type":"string"},"memory_id":{"type":"string"}},"required":["project_id","memory_id"]}},
+    {"name":"memory_project_suggest","description":"Suggest existing memories that may belong to a project, ranked locally by project name, summary, current state and next action. Suggestions are not linked until explicitly added.","inputSchema":{"type":"object","properties":{"project_id":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50}},"required":["project_id"]}},
+    {"name":"memory_project_resume","description":"Build a ranked project-level Resume Context from the project's state, next action and linked memories.","inputSchema":{"type":"object","properties":{"project_id":{"type":"string"},"query":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50}},"required":["project_id"]}},
+    {"name":"memory_save","description":"Save the relevant part of the current conversation into the local Memory Box. Use when the user says save/remember this conversation.","inputSchema":{"type":"object","properties":{"content":{"type":"string"},"title":{"type":"string"},"summary":{"type":"string"},"category":{"type":"string"},"tags":{"type":"array","items":{"type":"string"}},"source_agent":{"type":"string"},"source_uri":{"type":"string"},"project_id":{"type":"string"}},"required":["content"]}},
     {"name":"memory_list","description":"List recent saved memories, optionally filtered by category or query.","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"category":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":200}}}},
     {"name":"memory_get","description":"Open one saved memory by stable id such as M000007.","inputSchema":{"type":"object","properties":{"memory_id":{"type":"string"}},"required":["memory_id"]}},
     {"name":"memory_append","description":"Append new conversation context to an existing memory while keeping a version snapshot.","inputSchema":{"type":"object","properties":{"memory_id":{"type":"string"},"content":{"type":"string"}},"required":["memory_id","content"]}},
@@ -57,8 +77,32 @@ def _text(obj: Any) -> dict[str,Any]:
     return {"content":[{"type":"text","text":s}]}
 
 
+def _save_with_optional_project(a: dict[str,Any]) -> dict[str,Any]:
+    card=save_memory(a["content"],title=a.get("title"),summary=a.get("summary"),category=a.get("category","auto"),tags=a.get("tags",[]),source_agent=a.get("source_agent","mcp-agent"),source_uri=a.get("source_uri",""))
+    if a.get("project_id"):
+        add_memory_to_project(a["project_id"],card["memory_id"],role="context")
+        card=get_memory(card["memory_id"])
+    return card
+
+
 def call_tool(name: str, a: dict[str,Any]) -> dict[str,Any]:
-    if name=="memory_save": return _text(save_memory(a["content"],title=a.get("title"),summary=a.get("summary"),category=a.get("category","auto"),tags=a.get("tags",[]),source_agent=a.get("source_agent","mcp-agent"),source_uri=a.get("source_uri","")))
+    if name=="memory_semantic_status": return _text(backend_status())
+    if name=="memory_vector_rebuild": return _text(rebuild_vectors(memory_ids=a.get("memory_ids") or None))
+    if name=="memory_vector_search": return _text(vector_search(a["query"],project_id=a.get("project_id"),category=a.get("category"),limit=int(a.get("limit",20))))
+    if name=="memory_dedup_find": return _text(find_duplicates(a["memory_id"],limit=int(a.get("limit",12)),threshold=float(a.get("threshold",0.72))))
+    if name=="memory_dedup_scan": return _text(scan_duplicates(limit=int(a.get("limit",100)),threshold=float(a.get("threshold",0.78))))
+    if name=="memory_dedup_merge": return _text(merge_duplicate_memories(a["memory_ids"],title=a.get("title"),archive_sources=bool(a.get("archive_sources",False))))
+    if name=="memory_project_refresh": return _text(refresh_project_insights(a["project_id"]))
+    if name=="memory_smart_search": return _text(smart_search(a["query"],project_id=a.get("project_id"),category=a.get("category"),limit=int(a.get("limit",20))))
+    if name=="memory_project_create": return _text(create_project(a["name"],summary=a.get("summary","") or "",current_state=a.get("current_state","") or "",next_action=a.get("next_action","") or "",status=a.get("status","active")))
+    if name=="memory_projects": return _text(list_projects(status=a.get("status"),limit=int(a.get("limit",100))))
+    if name=="memory_project_get": return _text(get_project(a["project_id"]))
+    if name=="memory_project_update": return _text(update_project(a["project_id"],name=a.get("name"),summary=a.get("summary"),current_state=a.get("current_state"),next_action=a.get("next_action"),status=a.get("status")))
+    if name=="memory_project_add": return _text(add_memory_to_project(a["project_id"],a["memory_id"],role=a.get("role","context")))
+    if name=="memory_project_remove": return _text(remove_memory_from_project(a["project_id"],a["memory_id"]))
+    if name=="memory_project_suggest": return _text(suggest_project_memories(a["project_id"],limit=int(a.get("limit",12))))
+    if name=="memory_project_resume": return _text(project_resume(a["project_id"],query=a.get("query","") or "",limit=int(a.get("limit",12))))
+    if name=="memory_save": return _text(_save_with_optional_project(a))
     if name=="memory_list": return _text(list_memories(query=a.get("query"),category=a.get("category"),limit=min(int(a.get("limit",50)),200)))
     if name=="memory_get": return _text(get_memory(a["memory_id"]))
     if name=="memory_append": return _text(append_memory(a["memory_id"],a["content"]))

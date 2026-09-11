@@ -1,7 +1,6 @@
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$DesktopExe = Join-Path $Root "MemoryBox.exe"
-$DesktopCmd = if (Test-Path $DesktopExe) { $DesktopExe } else { Join-Path $Root "MemoryBox.bat" }
+$DesktopCmd = Join-Path $Root "MemoryBox.bat"
 $RecoverCmd = Join-Path $Root "MemoryBox-Recover.cmd"
 
 $types = @(

@@ -1,0 +1,25 @@
+name: Build local semantic model pack
+on:
+  workflow_dispatch:
+
+jobs:
+  pack:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip ".[semantic]"
+      - name: Download and validate BGE model into Memory Box cache
+        run: python memorybox_main.py model-install
+      - name: Export model cache
+        run: python scripts/export_model_pack.py
+      - name: Upload model pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: MemoryBox-Neural-Model-${{ runner.os }}
+          path: MemoryBox-Neural-Model-Pack-v0.16.0

@@ -1,9 +1,0 @@
-{
-  "name": "entry",
-  "version": "0.14.0",
-  "description": "Memory Box HarmonyOS entry module",
-  "main": "",
-  "author": "",
-  "license": "MIT",
-  "dependencies": {}
-}

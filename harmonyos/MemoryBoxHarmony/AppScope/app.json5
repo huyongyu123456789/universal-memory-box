@@ -1,0 +1,10 @@
+{
+  "app": {
+    "bundleName": "com.memorybox.app",
+    "vendor": "Memory Box",
+    "versionCode": 1600,
+    "versionName": "0.16.0",
+    "icon": "$media:app_icon",
+    "label": "$string:app_name"
+  }
+}

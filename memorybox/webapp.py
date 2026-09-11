@@ -7,8 +7,6 @@ import tempfile
 import threading
 import urllib.parse
 import webbrowser
-import sys
-from pathlib import Path
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -24,16 +22,12 @@ from .lan import discover_peers, pairing_status, send_pack, start_pairing, stop_
 from .crypto import public_identity, decrypt_file_for_local_device, inspect_encrypted_file
 from .recovery import create_recovery_kit, inspect_recovery_kit, recovery_status, restore_recovery_kit, backup_recovery_file_to_sync, verify_recovery_kit
 from .insurance import InsuranceMonitor, configure_insurance, disable_insurance, insurance_settings, run_insurance_backup, disaster_readiness, verify_latest_insurance, restore_latest_insurance, list_insurance_snapshots
+from .projects import create_project, list_projects, get_project, update_project, add_memory_to_project, remove_memory_from_project, project_resume, suggest_project_memories, refresh_project_insights
+from .retrieval import smart_search
+from .semantic import backend_status, rebuild_vectors, vector_search
+from .dedup import find_duplicates, scan_duplicates, merge_duplicate_memories
 
 from .ui import HTML
-
-
-def _brand_icon_path() -> Path:
-    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
-    p = base / "assets" / "icons" / "master.png"
-    if p.exists():
-        return p
-    return Path(__file__).resolve().parents[1] / "assets" / "icons" / "master.png"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -49,10 +43,6 @@ class Handler(BaseHTTPRequestHandler):
         try:
             u=urllib.parse.urlparse(self.path); p=u.path; q=urllib.parse.parse_qs(u.query)
             if p=="/": return self._send(HTML.replace('__CATEGORIES__', json.dumps(CATEGORY_LABELS, ensure_ascii=False)).replace('__VERSION__', __version__),ctype="text/html; charset=utf-8")
-            if p=="/brand-icon.png":
-                fp=_brand_icon_path()
-                if not fp.is_file(): return self._send({"error":"brand icon not found"},404)
-                return self._send(fp.read_bytes(),ctype="image/png")
             if p=="/api/health": return self._send({"ok":True,"name":"Memory Box","version":__version__})
             if p=="/api/categories": return self._send(category_counts())
             if p=="/api/agents": return self._send(scan_agents())
@@ -73,6 +63,17 @@ class Handler(BaseHTTPRequestHandler):
             if p=="/api/sync/security": return self._send(sync_security_status((q.get('endpoint_id') or [''])[0]))
             if p=="/api/lan/status": return self._send(pairing_status())
             if p=="/api/lan/discover": return self._send(discover_peers())
+            if p=="/api/projects": return self._send(list_projects(status=(q.get('status') or [None])[0],limit=int((q.get('limit') or ['200'])[0])))
+            if p=="/api/semantic/status": return self._send(backend_status())
+            if p=="/api/search/vector": return self._send(vector_search((q.get('query') or [''])[0],project_id=(q.get('project_id') or [None])[0],category=(q.get('category') or [None])[0],limit=int((q.get('limit') or ['20'])[0])))
+            if p=="/api/search/smart": return self._send(smart_search((q.get('query') or [''])[0],project_id=(q.get('project_id') or [None])[0],category=(q.get('category') or [None])[0],limit=int((q.get('limit') or ['20'])[0])))
+            if p=="/api/dedup/scan": return self._send(scan_duplicates(limit=int((q.get('limit') or ['100'])[0]),threshold=float((q.get('threshold') or ['0.78'])[0])))
+            if p.startswith("/api/memories/") and p.endswith("/duplicates"):
+                mid=p.split('/')[3]; return self._send(find_duplicates(mid,limit=int((q.get('limit') or ['12'])[0]),threshold=float((q.get('threshold') or ['0.72'])[0])))
+            if p.startswith("/api/projects/") and p.endswith("/suggest"):
+                pid=p.split('/')[3]; return self._send(suggest_project_memories(pid,limit=int((q.get('limit') or ['12'])[0])))
+            if p.startswith("/api/projects/"):
+                pid=p.split('/')[3]; return self._send(get_project(pid))
             if p=="/api/memories": return self._send(list_memories(query=(q.get('query') or [''])[0] or None,category=(q.get('category') or ['all'])[0],limit=int((q.get('limit') or ['100'])[0])))
             if p.startswith("/api/memories/") and p.endswith("/related"):
                 mid=p.split('/')[3]; return self._send(related_memories(mid))
@@ -130,8 +131,27 @@ class Handler(BaseHTTPRequestHandler):
                     try: __import__('os').unlink(temp_path)
                     except OSError: pass
             if p=="/api/recovery/backup": return self._send(backup_recovery_file_to_sync(d.get('path',''),d.get('endpoint_id','')))
-            if p=="/api/memories": return self._send(save_memory(d.get('content',''),title=d.get('title'),summary=d.get('summary'),category=d.get('category','auto'),tags=d.get('tags',[]),source_agent=d.get('source_agent','Memory Box UI'),source_uri=d.get('source_uri','')),201)
-            if p=="/api/quick-save": return self._send(save_memory(d.get('text') or d.get('content',''),title=d.get('title'),summary=d.get('summary'),category=d.get('category','auto'),tags=d.get('tags',[]),source_agent=d.get('agent') or d.get('source_agent','Browser Bridge'),source_uri=d.get('url') or d.get('source_uri','')),201)
+            if p=="/api/semantic/rebuild": return self._send(rebuild_vectors(memory_ids=d.get('memory_ids') or None))
+            if p=="/api/dedup/merge": return self._send(merge_duplicate_memories(d.get('memory_ids') or [],title=d.get('title'),archive_sources=bool(d.get('archive_sources',False))))
+            if p=="/api/projects": return self._send(create_project(d.get('name',''),summary=d.get('summary',''),current_state=d.get('current_state',''),next_action=d.get('next_action',''),status=d.get('status','active')),201)
+            if p.startswith("/api/projects/") and p.endswith("/refresh"):
+                return self._send(refresh_project_insights(p.split('/')[3]))
+            if p.startswith("/api/projects/") and p.endswith("/resume"):
+                return self._send(project_resume(p.split('/')[3],query=d.get('query',''),limit=int(d.get('limit',12))))
+            if p.startswith("/api/projects/") and p.endswith("/memories"):
+                pid=p.split('/')[3]; action=d.get('action','add')
+                if action=='remove': return self._send(remove_memory_from_project(pid,d.get('memory_id','')))
+                return self._send(add_memory_to_project(pid,d.get('memory_id',''),role=d.get('role','context')))
+            if p.startswith("/api/projects/"):
+                return self._send(update_project(p.split('/')[3],name=d.get('name'),summary=d.get('summary'),current_state=d.get('current_state'),next_action=d.get('next_action'),status=d.get('status'),archived=d.get('archived') if 'archived' in d else None))
+            if p=="/api/memories":
+                card=save_memory(d.get('content',''),title=d.get('title'),summary=d.get('summary'),category=d.get('category','auto'),tags=d.get('tags',[]),source_agent=d.get('source_agent','Memory Box UI'),source_uri=d.get('source_uri',''))
+                if d.get('project_id'): add_memory_to_project(d['project_id'],card['memory_id'],role=d.get('project_role','context')); card=get_memory(card['memory_id'])
+                return self._send(card,201)
+            if p=="/api/quick-save":
+                card=save_memory(d.get('text') or d.get('content',''),title=d.get('title'),summary=d.get('summary'),category=d.get('category','auto'),tags=d.get('tags',[]),source_agent=d.get('agent') or d.get('source_agent','Browser Bridge'),source_uri=d.get('url') or d.get('source_uri',''))
+                if d.get('project_id'): add_memory_to_project(d['project_id'],card['memory_id'],role=d.get('project_role','context')); card=get_memory(card['memory_id'])
+                return self._send(card,201)
             if p=="/api/export-pack":
                 outdir=default_home()/"exports"; outdir.mkdir(parents=True,exist_ok=True)
                 name=f"MemoryBox-Transfer-{__import__('datetime').datetime.now().strftime('%Y%m%d-%H%M%S')}.mboxpack"

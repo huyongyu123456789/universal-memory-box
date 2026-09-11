@@ -10,7 +10,7 @@ from typing import Any, Iterable
 
 from .categories import CATEGORY_LABELS, infer_category, normalize_category
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 10
 
 
 class ClosingConnection(sqlite3.Connection):
@@ -193,6 +193,54 @@ def init_db(path: str | os.PathLike[str] | None = None) -> Path:
             detail TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS projects(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id TEXT UNIQUE,
+            name TEXT NOT NULL,
+            summary TEXT NOT NULL DEFAULT '',
+            current_state TEXT NOT NULL DEFAULT '',
+            next_action TEXT NOT NULL DEFAULT '',
+            auto_summary TEXT NOT NULL DEFAULT '',
+            auto_current_state TEXT NOT NULL DEFAULT '',
+            auto_next_action TEXT NOT NULL DEFAULT '',
+            auto_updated_at TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            archived INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS project_memories(
+            project_id_fk INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            memory_id_fk INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+            role TEXT NOT NULL DEFAULT 'context',
+            added_at TEXT NOT NULL,
+            PRIMARY KEY(project_id_fk,memory_id_fk)
+        );
+        CREATE TABLE IF NOT EXISTS project_origins(
+            source_device_id TEXT NOT NULL,
+            origin_project_id TEXT NOT NULL,
+            local_project_id TEXT NOT NULL,
+            transfer_id TEXT NOT NULL DEFAULT '',
+            imported_at TEXT NOT NULL,
+            PRIMARY KEY(source_device_id, origin_project_id)
+        );
+                CREATE TABLE IF NOT EXISTS memory_vectors(
+            memory_id_fk INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+            backend TEXT NOT NULL,
+            dimension INTEGER NOT NULL,
+            content_sha256 TEXT NOT NULL,
+            vector_blob BLOB NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(memory_id_fk, backend)
+        );
+        CREATE TABLE IF NOT EXISTS dedup_events(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action TEXT NOT NULL,
+            source_ids TEXT NOT NULL DEFAULT '',
+            result_memory_id TEXT NOT NULL DEFAULT '',
+            detail TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL
+        );
         """)
         cols={r["name"] for r in con.execute("PRAGMA table_info(memories)").fetchall()}
         if "source_uri" not in cols:
@@ -201,6 +249,10 @@ def init_db(path: str | os.PathLike[str] | None = None) -> Path:
         if "encryption_mode" not in sync_cols:
             # Existing v0.8 endpoints are preserved as plaintext until the user explicitly upgrades them.
             con.execute("ALTER TABLE sync_endpoints ADD COLUMN encryption_mode TEXT NOT NULL DEFAULT 'legacy-plaintext'")
+        project_cols={r["name"] for r in con.execute("PRAGMA table_info(projects)").fetchall()}
+        for col in ("auto_summary","auto_current_state","auto_next_action","auto_updated_at"):
+            if col not in project_cols:
+                con.execute(f"ALTER TABLE projects ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
         con.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version',?)", (str(SCHEMA_VERSION),))
         try:
             con.execute("CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(memory_id,title,summary,content,category,content='memories',content_rowid='id')")
@@ -297,6 +349,11 @@ def get_memory(memory_id: str, db_path: str | os.PathLike[str] | None = None) ->
         result = _row_to_dict(con, row)
     from .attachments import list_attachments
     result["attachments"] = list_attachments(memory_id, db_path)
+    try:
+        from .projects import projects_for_memory
+        result["projects"] = projects_for_memory(memory_id, db_path=db_path)
+    except Exception:
+        result["projects"] = []
     return result
 
 
@@ -391,9 +448,9 @@ def category_counts(db_path: str | os.PathLike[str] | None = None) -> list[dict[
 
 def related_memories(memory_id: str, limit: int = 8, db_path: str | os.PathLike[str] | None = None) -> list[dict[str, Any]]:
     base = get_memory(memory_id, db_path)
-    tokens = [x for x in re.split(r"[^\w\u4e00-\u9fff]+", " ".join([base["title"],base["summary"]," ".join(base["tags"])])) if len(x) >= 2]
-    query = " OR ".join(tokens[:8]) if tokens else base["category"]
-    rows = list_memories(query=query, category=base["category"], limit=limit+1, db_path=db_path)
+    query = " ".join([base["title"], base["summary"], " ".join(base["tags"])])
+    from .retrieval import smart_search
+    rows = smart_search(query, category=base["category"], limit=limit+4, db_path=db_path)
     return [x for x in rows if x["memory_id"] != memory_id][:limit]
 
 
@@ -461,6 +518,7 @@ def merge_memories(memory_ids: list[str], *, title: str | None = None, archive_s
     return merged
 
 def bundle_by_query(query: str, *, category: str | None = None, limit: int = 10, db_path: str | os.PathLike[str] | None = None) -> dict[str, Any]:
-    cards = list_memories(query=query, category=category, limit=limit, db_path=db_path)
+    from .retrieval import smart_search
+    cards = smart_search(query, category=category, limit=limit, db_path=db_path)
     ids = [c["memory_id"] for c in cards]
-    return {"query": query, "memory_ids": ids, "count": len(ids), "context": compose_context(ids, db_path) if ids else ""}
+    return {"query": query, "memory_ids": ids, "count": len(ids), "hits": cards, "context": compose_context(ids, db_path) if ids else ""}

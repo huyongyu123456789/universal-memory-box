@@ -7,7 +7,7 @@
   "description_en": "Save, search, recall and resume local AI-agent memories across agents.",
   "source": "hyy1234567-universal-memory-box",
   "type": "mcp",
-  "version": "0.14.0",
+  "version": "0.16.0",
   "examples_zh": [
     "把刚才这段对话保存到记忆盒子",
     "列出我的论文类记忆",

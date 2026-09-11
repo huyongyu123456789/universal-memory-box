@@ -1,4 +1,4 @@
--- Memory Box SQLite schema v8
+-- Memory Box SQLite schema v10
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS memories(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,4 +132,56 @@ CREATE TABLE IF NOT EXISTS insurance_runs(
   attachment_count INTEGER NOT NULL DEFAULT 0,
   detail TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS projects(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id TEXT UNIQUE,
+  name TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  current_state TEXT NOT NULL DEFAULT '',
+  next_action TEXT NOT NULL DEFAULT '',
+  auto_summary TEXT NOT NULL DEFAULT '',
+  auto_current_state TEXT NOT NULL DEFAULT '',
+  auto_next_action TEXT NOT NULL DEFAULT '',
+  auto_updated_at TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS project_memories(
+  project_id_fk INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  memory_id_fk INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'context',
+  added_at TEXT NOT NULL,
+  PRIMARY KEY(project_id_fk,memory_id_fk)
+);
+CREATE TABLE IF NOT EXISTS project_origins(
+  source_device_id TEXT NOT NULL,
+  origin_project_id TEXT NOT NULL,
+  local_project_id TEXT NOT NULL,
+  transfer_id TEXT NOT NULL DEFAULT '',
+  imported_at TEXT NOT NULL,
+  PRIMARY KEY(source_device_id, origin_project_id)
+);
+
+
+-- v0.16 local vector cache and dedup audit
+CREATE TABLE IF NOT EXISTS memory_vectors(
+    memory_id_fk INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+    backend TEXT NOT NULL,
+    dimension INTEGER NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    vector_blob BLOB NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(memory_id_fk, backend)
+);
+CREATE TABLE IF NOT EXISTS dedup_events(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action TEXT NOT NULL,
+    source_ids TEXT NOT NULL DEFAULT '',
+    result_memory_id TEXT NOT NULL DEFAULT '',
+    detail TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
 );

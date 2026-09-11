@@ -12,6 +12,11 @@ from .webapp import serve
 from .crypto import public_identity, inspect_encrypted_file, decrypt_file_for_local_device
 from .recovery import backup_recovery_file_to_sync, create_recovery_kit, inspect_recovery_kit, recovery_status, restore_recovery_kit, verify_recovery_kit
 from .insurance import configure_insurance, disable_insurance, insurance_settings, run_insurance_backup, disaster_readiness, verify_latest_insurance, restore_insurance_snapshot, restore_latest_insurance, list_insurance_snapshots
+from .projects import create_project, list_projects, get_project, update_project, add_memory_to_project, remove_memory_from_project, project_resume, suggest_project_memories, refresh_project_insights
+from .retrieval import smart_search
+from .semantic import backend_status, rebuild_vectors, vector_search
+from .model_manager import model_status, install_model, uninstall_model
+from .dedup import find_duplicates, scan_duplicates, merge_duplicate_memories
 
 
 def main(argv=None):
@@ -24,6 +29,25 @@ def main(argv=None):
  argv=raw
  p=argparse.ArgumentParser(prog='memorybox'); s=p.add_subparsers(dest='cmd')
  s.add_parser('app'); desk=s.add_parser('desktop'); desk.add_argument('paths',nargs='*'); desk.add_argument('--minimized',action='store_true'); s.add_parser('mcp'); s.add_parser('agents'); s.add_parser('connect-all')
+ smart=s.add_parser('smart-search'); smart.add_argument('query'); smart.add_argument('--project'); smart.add_argument('--category'); smart.add_argument('--limit',type=int,default=20)
+ sem=s.add_parser('semantic-status')
+ ms=s.add_parser('model-status')
+ mi=s.add_parser('model-install'); mi.add_argument('--from-dir',dest='source_dir')
+ s.add_parser('model-remove')
+ vr=s.add_parser('vectors-rebuild'); vr.add_argument('--id',dest='memory_ids',action='append',default=[])
+ vs=s.add_parser('vector-search'); vs.add_argument('query'); vs.add_argument('--project'); vs.add_argument('--category'); vs.add_argument('--limit',type=int,default=20)
+ df=s.add_parser('dedup-find'); df.add_argument('memory_id'); df.add_argument('--limit',type=int,default=12); df.add_argument('--threshold',type=float,default=0.72)
+ ds=s.add_parser('dedup-scan'); ds.add_argument('--limit',type=int,default=100); ds.add_argument('--threshold',type=float,default=0.78)
+ dm=s.add_parser('dedup-merge'); dm.add_argument('memory_ids',nargs='+'); dm.add_argument('--title'); dm.add_argument('--keep-sources',action='store_true')
+ pc=s.add_parser('project-create'); pc.add_argument('name'); pc.add_argument('--summary',default=''); pc.add_argument('--current-state',default=''); pc.add_argument('--next-action',default=''); pc.add_argument('--status',default='active',choices=['active','paused','completed'])
+ pl=s.add_parser('projects'); pl.add_argument('--status'); pl.add_argument('--limit',type=int,default=100)
+ pg=s.add_parser('project-get'); pg.add_argument('project_id')
+ pu=s.add_parser('project-update'); pu.add_argument('project_id'); pu.add_argument('--name'); pu.add_argument('--summary'); pu.add_argument('--current-state'); pu.add_argument('--next-action'); pu.add_argument('--status',choices=['active','paused','completed','archived'])
+ pa=s.add_parser('project-add'); pa.add_argument('project_id'); pa.add_argument('memory_id'); pa.add_argument('--role',default='context')
+ pr=s.add_parser('project-remove'); pr.add_argument('project_id'); pr.add_argument('memory_id')
+ pres=s.add_parser('project-resume'); pres.add_argument('project_id'); pres.add_argument('--query',default=''); pres.add_argument('--limit',type=int,default=12)
+ psug=s.add_parser('project-suggest'); psug.add_argument('project_id'); psug.add_argument('--limit',type=int,default=12)
+ pref=s.add_parser('project-refresh'); pref.add_argument('project_id')
  s.add_parser('sync-endpoints'); s.add_parser('sync-detect'); s.add_parser('sync-all'); s.add_parser('lan-status'); s.add_parser('lan-discover'); s.add_parser('lan-stop'); s.add_parser('identity'); s.add_parser('recovery-status'); s.add_parser('insurance-status'); s.add_parser('insurance-disable')
  sf=s.add_parser('sync-add'); sf.add_argument('path'); sf.add_argument('--provider',default='generic-folder'); sf.add_argument('--name'); sf.add_argument('--no-auto-import',action='store_true'); sf.add_argument('--encryption-mode',default='e2ee',choices=['e2ee','legacy-plaintext'])
  sr=s.add_parser('sync-remove'); sr.add_argument('endpoint_id')
@@ -38,7 +62,7 @@ def main(argv=None):
  lp=s.add_parser('lan-pair'); lp.add_argument('--port',type=int,default=0); lp.add_argument('--ttl',type=int,default=300)
  lsend=s.add_parser('lan-send'); lsend.add_argument('host'); lsend.add_argument('port',type=int); lsend.add_argument('code'); lsend.add_argument('package')
  c=s.add_parser('connect'); c.add_argument('agent')
- sv=s.add_parser('save'); sv.add_argument('content'); sv.add_argument('--title'); sv.add_argument('--category',default='auto'); sv.add_argument('--tag',action='append',default=[]); sv.add_argument('--attach',action='append',default=[])
+ sv=s.add_parser('save'); sv.add_argument('content'); sv.add_argument('--title'); sv.add_argument('--category',default='auto'); sv.add_argument('--tag',action='append',default=[]); sv.add_argument('--attach',action='append',default=[]); sv.add_argument('--project')
  ls=s.add_parser('list'); ls.add_argument('--query'); ls.add_argument('--category'); ls.add_argument('--limit',type=int,default=50)
  g=s.add_parser('get'); g.add_argument('memory_id')
  a=s.add_parser('append'); a.add_argument('memory_id'); a.add_argument('content')
@@ -73,6 +97,25 @@ def main(argv=None):
   from .desktop import run_desktop
   return run_desktop(args.paths,minimized=args.minimized)
  if cmd=='mcp': return run_stdio()
+ if cmd=='smart-search': print(json.dumps(smart_search(args.query,project_id=args.project,category=args.category,limit=args.limit),ensure_ascii=False,indent=2)); return 0
+ if cmd=='semantic-status': print(json.dumps(backend_status(),ensure_ascii=False,indent=2)); return 0
+ if cmd=='model-status': print(json.dumps(model_status(),ensure_ascii=False,indent=2)); return 0
+ if cmd=='model-install': print(json.dumps(install_model(source_dir=args.source_dir),ensure_ascii=False,indent=2)); return 0
+ if cmd=='model-remove': print(json.dumps(uninstall_model(),ensure_ascii=False,indent=2)); return 0
+ if cmd=='vectors-rebuild': print(json.dumps(rebuild_vectors(memory_ids=args.memory_ids or None),ensure_ascii=False,indent=2)); return 0
+ if cmd=='vector-search': print(json.dumps(vector_search(args.query,project_id=args.project,category=args.category,limit=args.limit),ensure_ascii=False,indent=2)); return 0
+ if cmd=='dedup-find': print(json.dumps(find_duplicates(args.memory_id,limit=args.limit,threshold=args.threshold),ensure_ascii=False,indent=2)); return 0
+ if cmd=='dedup-scan': print(json.dumps(scan_duplicates(limit=args.limit,threshold=args.threshold),ensure_ascii=False,indent=2)); return 0
+ if cmd=='dedup-merge': print(json.dumps(merge_duplicate_memories(args.memory_ids,title=args.title,archive_sources=not args.keep_sources),ensure_ascii=False,indent=2)); return 0
+ if cmd=='project-create': print(json.dumps(create_project(args.name,summary=args.summary,current_state=args.current_state,next_action=args.next_action,status=args.status),ensure_ascii=False,indent=2)); return 0
+ if cmd=='projects': print(json.dumps(list_projects(status=args.status,limit=args.limit),ensure_ascii=False,indent=2)); return 0
+ if cmd=='project-get': print(json.dumps(get_project(args.project_id),ensure_ascii=False,indent=2)); return 0
+ if cmd=='project-update': print(json.dumps(update_project(args.project_id,name=args.name,summary=args.summary,current_state=args.current_state,next_action=args.next_action,status=args.status),ensure_ascii=False,indent=2)); return 0
+ if cmd=='project-add': print(json.dumps(add_memory_to_project(args.project_id,args.memory_id,role=args.role),ensure_ascii=False,indent=2)); return 0
+ if cmd=='project-remove': print(json.dumps(remove_memory_from_project(args.project_id,args.memory_id),ensure_ascii=False,indent=2)); return 0
+ if cmd=='project-resume': print(project_resume(args.project_id,query=args.query,limit=args.limit)['context']); return 0
+ if cmd=='project-suggest': print(json.dumps(suggest_project_memories(args.project_id,limit=args.limit),ensure_ascii=False,indent=2)); return 0
+ if cmd=='project-refresh': print(json.dumps(refresh_project_insights(args.project_id),ensure_ascii=False,indent=2)); return 0
  if cmd=='agents': print(json.dumps(scan_agents(),ensure_ascii=False,indent=2)); return 0
  if cmd=='connect-all': print(json.dumps(connect_all_detected(),ensure_ascii=False,indent=2)); return 0
  if cmd=='connect': print(json.dumps(connect_agent(args.agent),ensure_ascii=False,indent=2)); return 0
@@ -124,8 +167,9 @@ def main(argv=None):
  if cmd=='lan-send': print(json.dumps(send_pack(args.host,args.port,args.code,args.package),ensure_ascii=False,indent=2)); return 0
  if cmd=='save':
   card=save_memory(args.content,title=args.title,category=args.category,tags=args.tag,source_agent='cli')
+  if args.project: add_memory_to_project(args.project,card['memory_id'])
   attached=[add_attachment(card['memory_id'],p) for p in args.attach]
-  if attached: card=get_memory(card['memory_id'])
+  if attached or args.project: card=get_memory(card['memory_id'])
   print(json.dumps(card,ensure_ascii=False,indent=2)); return 0
  if cmd=='list': print(json.dumps(list_memories(query=args.query,category=args.category,limit=args.limit),ensure_ascii=False,indent=2)); return 0
  if cmd=='get': print(json.dumps(get_memory(args.memory_id),ensure_ascii=False,indent=2)); return 0

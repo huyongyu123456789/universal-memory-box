@@ -1,14 +1,31 @@
 # Changelog
 
-## 0.14.0 - 2026-09-10
+## 0.16.0 - 2026-09-11
 
-- Added native macOS `.app` release workflow for Apple Silicon and Intel.
-- Added Finder document associations for `.mboxpack`, `.mboxenc`, and `.mbxrecovery`.
-- Added macOS user-level start-at-login support via LaunchAgents and native WKWebView desktop runtime.
-- Added HarmonyOS API 26 Stage/ArkTS companion project for phone/tablet/2in1 with direct home-screen launch.
-- Unified Windows, macOS, and HarmonyOS branding around the red cavalry app icon.
-- Windows PyInstaller build now embeds the branded `.ico`; native file associations prefer `MemoryBox.exe`.
-- Added platform build notes and validation contracts for one-click/tap launch behavior.
+- Added optional BAAI/bge-small-zh-v1.5 neural embeddings through FastEmbed/ONNX Runtime (512 dimensions, ~90 MB model class).
+- Added explicit `model-status`, `model-install`, offline `--from-dir` model import, and `model-remove`; normal retrieval never downloads models implicitly.
+- Added local-only neural inference guard with `local_files_only=True` and automatic `hashing-v1` fallback.
+- Windows bootstrap now installs the lightweight neural runtime and attempts a one-time pinned model setup, with a non-fatal fallback and `MEMORYBOX_SKIP_NEURAL_MODEL=1` escape hatch.
+- Added macOS Cocoa/WebKit desktop support, per-user LaunchAgent startup integration, red cavalry `.icns`, and a GitHub workflow producing `MemoryBox.app + .dmg`.
+- Added optional Developer ID signing and Apple notarization steps to the macOS workflow.
+- Added a native HarmonyOS NEXT ArkTS/ArkUI Stage-model source project with local `relationalStore` RDB foundation and red cavalry app icon.
+- Updated Windows release workflow to bundle the FastEmbed model cache and neural runtime in the desktop distribution.
+- Added a separate multi-OS local neural model-pack workflow.
+- No SQLite schema change; schema remains v10.
+- 92/92 regression tests pass in the current source environment.
+
+## 0.14.0 - 2026-09-11
+
+- Added first-class **Project Workspaces** with stable `P000001` IDs, project summaries, current state, next action and lifecycle status.
+- Added local **smart hybrid retrieval** that ranks title, summary, tags, content, project membership, recency, pinned and favorite signals without sending memory contents to a cloud model.
+- Added project-level Resume Context generation and one-click "continue this project" flow.
+- Added related-memory suggestions for projects; suggestions require explicit linking and do not silently rewrite the library.
+- Added optional save-directly-to-project from Web UI, CLI and MCP.
+- Upgraded `.mboxpack` to transfer format v3 so project workspaces and memory links survive cross-device migration and insurance backups.
+- Added Project Workspace and smart-search APIs, CLI commands and MCP tools.
+- SQLite schema upgraded to v9 with `projects`, `project_memories`, and `project_origins`; existing databases migrate in place.
+- 77/77 regression tests pass.
+
 
 ## 0.13.0 - 2026-09-10
 

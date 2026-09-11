@@ -6,20 +6,33 @@ Memory Box stores durable conversation/task context on the user's own machine an
 
 
 
-<p align="center">
-  <img src="docs/memory-box-system-mechanism.png" alt="Memory Box system mechanism" width="100%">
-</p>
+## v0.16 Local Neural Retrieval + Windows/macOS/HarmonyOS release foundation
 
-> **系统机制图 / System mechanism.** Memory Box captures user–agent interactions, organizes them into structured, searchable memory cards, stores and retrieves context locally, synchronizes encrypted context across devices and agents, and reconstructs the context needed to continue work.
+Memory Box v0.16 productizes semantic retrieval with an optional **BAAI/bge-small-zh-v1.5** backend through **FastEmbed/ONNX Runtime**. The model is 512-dimensional and is installed only by an explicit installer/build step; normal search never downloads model files. Once present, retrieval forces local-only model loading and falls back safely to `hashing-v1` if the neural runtime is unavailable.
 
-## v0.14 Cross-platform apps: Windows, macOS and HarmonyOS
+This release also expands the desktop product line beyond Windows. Windows keeps the native pywebview/WebView2 shell. macOS now has a Cocoa/WebKit build workflow that produces `MemoryBox.app` and a `.dmg`, with Developer ID signing/notarization hooks for smooth external double-click launch. HarmonyOS NEXT gets a separate native **ArkTS/ArkUI Stage-model** project backed by HarmonyOS `relationalStore`, rather than pretending the Python desktop shell is a native HarmonyOS app.
 
-v0.14 unifies Memory Box across three user-facing platforms with the same **red cavalry** brand icon. Windows keeps the native `MemoryBox.exe` shell; macOS adds a native `Memory Box.app` built on Cocoa/WKWebView for both Apple Silicon and Intel; HarmonyOS adds an API 26 Stage/ArkTS companion for phone, tablet and 2-in-1 devices.
+```bash
+memorybox model-status
+memorybox model-install
+memorybox vectors-rebuild
+memorybox vector-search "OmpA mechanism"
+```
 
-Launch behavior is explicit: double-click `MemoryBox.exe` on Windows, double-click `Memory Box.app` on macOS, and tap the Memory Box icon on HarmonyOS. Windows/macOS package associations route `.mboxpack` and `.mboxenc` into the existing verified import path; recovery packages remain human-gated. macOS release builds include `.app` and `.dmg` artifacts. HarmonyOS declares a singleton `EntryAbility` with the system home action/entity so tapping the launcher icon enters the app directly. See `docs/MULTIPLATFORM.md`.
+See `docs/NEURAL_MODEL.md`, `docs/PLATFORMS.md`, `macos/README.md`, and `harmonyos/MemoryBoxHarmony/README.md`.
 
-> macOS distribution note: a locally/ad-hoc signed `.app` has a valid launch bundle, but truly frictionless first-launch on arbitrary Macs requires Apple Developer ID signing and notarization. HarmonyOS likewise requires a valid DevEco/AppGallery signing profile before installing a release HAP/APP on devices.
+## v0.14 Project Workspaces + Smart Retrieval
 
+Memory Box now treats long-running work as a first-class **Project Workspace** instead of a loose pile of cards. A project has a stable `P000001` ID, summary, current state, next action, lifecycle status and linked memories. The local smart-search engine ranks memories using weighted title/summary/tag/content evidence, project context, recency, pin/favorite signals and approximate text matching. It stays offline and dependency-free; v0.14 does **not** claim a neural embedding model.
+
+```bash
+memorybox project-create "CRAB manuscript" --summary "Audited manuscript revision" --current-state "Stage 2 complete" --next-action "Verify Tier-A evidence"
+memorybox project-add P000001 M000007 --role evidence
+memorybox smart-search "Tier-A verification" --project P000001
+memorybox project-resume P000001
+```
+
+`.mboxpack` transfer format v3 carries project metadata and memory links, so a project moved to another computer remains a project instead of becoming unrelated memory cards.
 
 ## v0.13 Native Windows Desktop Shell
 
@@ -49,6 +62,10 @@ The recovery code remains local-only and is never exposed through MCP. Windows u
 
 ## Features
 
+- First-class Project Workspaces with state, next action and project-level resume
+- Local hybrid retrieval with vector similarity and transparent ranking signals
+- Review-first duplicate detection and explicit project-safe merge
+- Derived project summary/state/next-action fields that never overwrite curated fields
 - One-call conversation save with automatic title/category fallback
 - Stable IDs (`M000001`), categories and tags
 - SQLite FTS5 search with LIKE fallback
@@ -60,13 +77,9 @@ The recovery code remains local-only and is never exposed through MCP. Windows u
 - Agent scanner and connector helpers
 - WorkBuddy MCP + Skill connector bundle
 
-## GitHub one-click release
-
-On Windows, double-click `Publish-To-GitHub.cmd` from the extracted source folder to push `main` and the `v0.14.0` tag to the configured repository. The tag triggers Windows and macOS release builds; main also triggers CI and HarmonyOS validation. See `docs/GITHUB_RELEASE.md`.
-
 ## Quick start
 
-Windows: extract the release and double-click `Install-MemoryBox.cmd`. The bootstrap installs into `%LOCALAPPDATA%\MemoryBox`, downloads an isolated Python runtime on first install, creates a Start Menu shortcut, opens the local UI, and performs a one-time auto-link scan for detected local MCP agents. Set `MEMORYBOX_NO_AUTOLINK=1` to disable auto-linking.
+Windows: extract the release and double-click `Install-MemoryBox.cmd`. v0.16 also installs the lightweight FastEmbed runtime and attempts a one-time pinned BGE model download unless `MEMORYBOX_SKIP_NEURAL_MODEL=1` is set. The bootstrap installs into `%LOCALAPPDATA%\MemoryBox`, downloads an isolated Python runtime on first install, creates a Start Menu shortcut, opens the local UI, and performs a one-time auto-link scan for detected local MCP agents. Set `MEMORYBOX_NO_AUTOLINK=1` to disable auto-linking.
 
 Source desktop mode:
 
@@ -85,6 +98,14 @@ MCP stdio:
 ```bash
 python memorybox_main.py mcp
 ```
+
+### macOS
+
+Use the GitHub `Build macOS desktop app` workflow to produce `MemoryBox.app` inside a `.dmg`. A Developer ID certificate plus Apple notarization credentials are required for frictionless distribution to other Macs; without them the workflow creates an ad-hoc signed development artifact.
+
+### HarmonyOS NEXT
+
+Open `harmonyos/MemoryBoxHarmony` in DevEco Studio. It is a native ArkTS/ArkUI Stage-model project with a local RDB foundation and the red cavalry icon. Release HAP/APP signing requires the publisher's AppGallery Connect credentials.
 
 ## Natural-language workflow
 
@@ -109,7 +130,7 @@ No cloud account, no telemetry, no automatic upload. The database lives locally 
 
 ## MCP tools
 
-`memory_save`, `memory_list`, `memory_get`, `memory_append`, `memory_categories`, `memory_resume`, `memory_related`, `memory_bundle`, `memory_merge`, `memory_pin`, `memory_favorite`, `memory_device_identity`, `memory_sync_add_folder`, `memory_sync_endpoints`, `memory_sync_detect`, `memory_sync_devices`, `memory_sync_trust_device`, `memory_sync_untrust_device`, `memory_sync_security`, `memory_sync_set_encryption`, `memory_sync_send`, `memory_sync_pull`, `memory_lan_pair`, `memory_lan_discover`, `memory_lan_send_pack`.
+`memory_save`, `memory_list`, `memory_get`, `memory_append`, `memory_categories`, `memory_resume`, `memory_related`, `memory_bundle`, `memory_merge`, `memory_pin`, `memory_favorite`, `memory_smart_search`, `memory_project_create`, `memory_projects`, `memory_project_get`, `memory_project_update`, `memory_project_add`, `memory_project_remove`, `memory_project_suggest`, `memory_project_resume`, `memory_device_identity`, `memory_sync_add_folder`, `memory_sync_endpoints`, `memory_sync_detect`, `memory_sync_devices`, `memory_sync_trust_device`, `memory_sync_untrust_device`, `memory_sync_security`, `memory_sync_set_encryption`, `memory_sync_send`, `memory_sync_pull`, `memory_lan_pair`, `memory_lan_discover`, `memory_lan_send_pack`.
 
 ## Tests
 
@@ -120,7 +141,7 @@ python -m unittest discover -s tests -v
 MIT License.
 
 
-## Browser Bridge v0.14
+## Browser Bridge v0.13
 
 The included Chrome/Edge Manifest V3 extension bridges web-only AI chats to the local Memory Box. It can save selected text, capture the current visible conversation, let the user pick local attachment files, search local memories, copy a Resume Context, and inject that context into the active chat composer without automatically sending it. Browser-saved memories include the source agent and source URL. Existing databases migrate in-place to schema v8.
 
@@ -146,7 +167,7 @@ Complete-session packages are **not encrypted** in v0.7; treat them as private d
 
 ## Complete-session attachments (v0.7)
 
-Attach real PDFs, Word files, images, CSVs, code and logs to a memory with `memorybox attach` or the `memory_attach_file` MCP tool. Files are copied into a local SHA-256-addressed store and deduplicated. `session-pack` / `export-pack` automatically carries linked files inside transfer-format-v2 `.mboxpack` capsules. Import restores the bytes on the destination computer and rebuilds links even when memory IDs are remapped. Browser Bridge v0.14 also lets the user select local files while saving a web chat.
+Attach real PDFs, Word files, images, CSVs, code and logs to a memory with `memorybox attach` or the `memory_attach_file` MCP tool. Files are copied into a local SHA-256-addressed store and deduplicated. `session-pack` / `export-pack` automatically carries linked files inside transfer-format-v2 `.mboxpack` capsules. Import restores the bytes on the destination computer and rebuilds links even when memory IDs are remapped. Browser Bridge v0.13 also lets the user select local files while saving a web chat.
 
 
 ## v0.10 Key vault and disaster recovery

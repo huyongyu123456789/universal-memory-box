@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Universal Memory Box Bridge",
-  "version": "0.14.0",
+  "version": "0.16.0",
   "description": "Save AI chats and local attachments to Memory Box, then restore complete session context.",
   "permissions": [
     "contextMenus",

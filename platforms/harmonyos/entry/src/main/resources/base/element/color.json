@@ -1,9 +1,0 @@
-{
-  "color": [
-    { "name": "start_window_background", "value": "#F5F5F7" },
-    { "name": "memory_red", "value": "#D91E2B" },
-    { "name": "surface", "value": "#FFFFFFFF" },
-    { "name": "text_primary", "value": "#1D1D1F" },
-    { "name": "text_secondary", "value": "#6E6E73" }
-  ]
-}

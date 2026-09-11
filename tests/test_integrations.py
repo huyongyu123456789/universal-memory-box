@@ -72,7 +72,7 @@ class T(unittest.TestCase):
  def test_browser_extension_v05_contract(self):
   ext=ROOT/'integrations'/'browser-extension'
   manifest=json.loads((ext/'manifest.json').read_text(encoding='utf-8'))
-  self.assertEqual(manifest['version'],'0.14.0')
+  self.assertEqual(manifest['version'],'0.16.0')
   self.assertIn('scripting',manifest['permissions'])
   self.assertIn('save-selection',manifest['commands'])
   bg=(ext/'background.js').read_text(encoding='utf-8')
@@ -163,7 +163,7 @@ class T(unittest.TestCase):
 
  def test_windows_release_workflow_installs_project_dependencies(self):
   wf=(ROOT/'.github/workflows/build-windows.yml').read_text(encoding='utf-8')
-  self.assertIn('python -m pip install --upgrade pip pyinstaller ".[desktop]"',wf)
+  self.assertIn('python -m pip install --upgrade pip pyinstaller ".[desktop,semantic]"',wf)
   self.assertIn('pyinstaller',wf)
 
  def test_transfer_association_includes_encrypted_packages(self):
@@ -244,7 +244,7 @@ class T(unittest.TestCase):
    try:
     base=f'http://127.0.0.1:{srv.server_address[1]}'
     html=urllib.request.urlopen(base+'/').read().decode()
-    for token in ['Private AI memory hub','data-view="home"','自动保险','设备同步','灾难恢复','memorybox-theme','prefers-color-scheme:dark','v0.14.0']:
+    for token in ['Private AI memory hub','data-view="home"','自动保险','设备同步','灾难恢复','memorybox-theme','prefers-color-scheme:dark','v0.16.0']:
      self.assertIn(token,html)
     self.assertNotIn('__VERSION__',html)
    finally:
@@ -292,35 +292,120 @@ class T(unittest.TestCase):
    p=Path(td)/'test.mbxrecovery'; p.write_bytes(b'placeholder')
    r=process_open_path(p); self.assertEqual(r['kind'],'recovery'); self.assertTrue(r['requires_user_secret'])
 
- def test_v14_red_cavalry_brand_assets(self):
-  from PIL import Image
-  master=ROOT/'assets'/'icons'/'master.png'
-  ico=ROOT/'assets'/'icons'/'windows'/'MemoryBox.ico'
-  self.assertTrue(master.is_file()); self.assertTrue(ico.is_file())
-  with Image.open(master) as im:
-   self.assertEqual(im.size,(1024,1024))
-  self.assertIn('/brand-icon.png',(ROOT/'memorybox'/'ui.py').read_text(encoding='utf-8'))
+if __name__=='__main__': unittest.main()
 
- def test_v14_macos_release_contract(self):
+# v0.14 Project Workspace + smart retrieval surface
+class ProjectIntegrationT(unittest.TestCase):
+ def test_v14_mcp_project_and_smart_search_tools_present(self):
+  from memorybox.mcp_server import TOOLS
+  names={x['name'] for x in TOOLS}
+  self.assertTrue({'memory_smart_search','memory_project_create','memory_projects','memory_project_get','memory_project_update','memory_project_add','memory_project_remove','memory_project_resume'} <= names)
+
+ def test_v14_web_project_workspace_surface_and_api(self):
+  import tempfile, os, json, urllib.request, threading
+  from http.server import ThreadingHTTPServer
+  from memorybox.webapp import Handler
+  from memorybox.db import save_memory
+  with tempfile.TemporaryDirectory() as td:
+   old=os.environ.get('MEMORYBOX_HOME'); os.environ['MEMORYBOX_HOME']=td
+   m=save_memory('project web memory',title='Web project memory')
+   srv=ThreadingHTTPServer(('127.0.0.1',0),Handler); t=threading.Thread(target=srv.serve_forever,daemon=True); t.start()
+   try:
+    base=f'http://127.0.0.1:{srv.server_address[1]}'
+    body=json.dumps({'name':'Web Project','summary':'API workspace','current_state':'active work','next_action':'continue'}).encode()
+    req=urllib.request.Request(base+'/api/projects',data=body,headers={'Content-Type':'application/json'},method='POST'); p=json.loads(urllib.request.urlopen(req).read())
+    add=json.dumps({'memory_id':m['memory_id'],'role':'context'}).encode(); req=urllib.request.Request(base+f'/api/projects/{p["project_id"]}/memories',data=add,headers={'Content-Type':'application/json'},method='POST'); urllib.request.urlopen(req).read()
+    got=json.loads(urllib.request.urlopen(base+f'/api/projects/{p["project_id"]}').read()); self.assertEqual(got['memory_count'],1)
+    hits=json.loads(urllib.request.urlopen(base+f'/api/search/smart?query=project&project_id={p["project_id"]}').read()); self.assertTrue(hits)
+    html=urllib.request.urlopen(base+'/').read().decode(); self.assertIn('data-view="projects"',html); self.assertIn('智能相关度',html); self.assertIn('v0.16.0',html)
+   finally:
+    srv.shutdown(); srv.server_close()
+    if old is None: os.environ.pop('MEMORYBOX_HOME',None)
+    else: os.environ['MEMORYBOX_HOME']=old
+
+class BrandingT(unittest.TestCase):
+ def test_v14_red_cavalry_icon_is_wired_to_windows_and_browser(self):
+  self.assertTrue((ROOT/'assets'/'memorybox-red-cavalry.png').is_file())
+  self.assertTrue((ROOT/'assets'/'MemoryBox.ico').is_file())
+  wf=(ROOT/'.github/workflows/build-windows.yml').read_text(encoding='utf-8')
+  self.assertIn('--icon assets/MemoryBox.ico',wf); self.assertIn('--add-data "assets;assets"',wf)
+  self.assertGreater((ROOT/'integrations'/'browser-extension'/'icon128.png').stat().st_size,1000)
+
+
+class SemanticIntegrationT(unittest.TestCase):
+ def test_v15_mcp_semantic_dedup_and_project_refresh_tools_present(self):
+  from memorybox.mcp_server import TOOLS
+  names={x['name'] for x in TOOLS}
+  expected={'memory_semantic_status','memory_vector_rebuild','memory_vector_search','memory_dedup_find','memory_dedup_scan','memory_dedup_merge','memory_project_refresh'}
+  self.assertTrue(expected <= names)
+
+ def test_v15_web_semantic_and_dedup_api(self):
+  import tempfile, os, json, urllib.request, threading
+  from http.server import ThreadingHTTPServer
+  from memorybox.webapp import Handler
+  from memorybox.db import save_memory
+  with tempfile.TemporaryDirectory() as td:
+   old=os.environ.get('MEMORYBOX_HOME'); os.environ['MEMORYBOX_HOME']=td
+   a=save_memory('same web semantic memory',title='Semantic A'); save_memory('same web semantic memory',title='Semantic B')
+   srv=ThreadingHTTPServer(('127.0.0.1',0),Handler); t=threading.Thread(target=srv.serve_forever,daemon=True); t.start()
+   try:
+    base=f'http://127.0.0.1:{srv.server_address[1]}'
+    st=json.loads(urllib.request.urlopen(base+'/api/semantic/status').read()); self.assertTrue(st['local_only'])
+    hits=json.loads(urllib.request.urlopen(base+'/api/search/vector?query=semantic+memory').read()); self.assertTrue(hits)
+    dup=json.loads(urllib.request.urlopen(base+f'/api/memories/{a["memory_id"]}/duplicates?threshold=0.7').read()); self.assertTrue(dup)
+    html=urllib.request.urlopen(base+'/').read().decode(); self.assertIn('本地向量检索',html); self.assertIn('查找重复',html); self.assertIn('v0.16.0',html)
+   finally:
+    srv.shutdown(); srv.server_close()
+    if old is None: os.environ.pop('MEMORYBOX_HOME',None)
+    else: os.environ['MEMORYBOX_HOME']=old
+
+class PlatformV16IntegrationT(unittest.TestCase):
+ def test_v16_fastembed_model_contract(self):
+  pyproject=(ROOT/'pyproject.toml').read_text(encoding='utf-8')
+  mm=(ROOT/'memorybox'/'model_manager.py').read_text(encoding='utf-8')
+  sem=(ROOT/'memorybox'/'semantic.py').read_text(encoding='utf-8')
+  self.assertIn('fastembed>=0.7.4,<0.9',pyproject)
+  self.assertIn('BAAI/bge-small-zh-v1.5',mm)
+  self.assertIn('local_files_only=True',mm)
+  self.assertIn('local_files_only=True',sem)
+  self.assertIn('model-install', (ROOT/'memorybox'/'cli.py').read_text(encoding='utf-8'))
+
+ def test_v16_macos_release_contract(self):
   wf=(ROOT/'.github/workflows/build-macos.yml').read_text(encoding='utf-8')
   desktop=(ROOT/'memorybox'/'desktop.py').read_text(encoding='utf-8')
-  plist=(ROOT/'platforms'/'macos'/'postprocess_plist.py').read_text(encoding='utf-8')
-  for token in ['macos-15','macos-15-intel','--windowed','--argv-emulation','Memory Box.app','hdiutil create','codesign --verify']:
+  self.assertTrue((ROOT/'assets'/'MemoryBox.icns').is_file())
+  for token in ['macos-latest','MemoryBox.app','hdiutil create','notarytool','MemoryBox.icns']:
    self.assertIn(token,wf)
-  self.assertIn('MAC_LAUNCH_AGENT_LABEL',desktop); self.assertIn('is_macos()',desktop)
-  self.assertIn('CFBundleDocumentTypes',plist); self.assertIn('mboxpack',plist); self.assertIn('mboxenc',plist)
+  self.assertIn('return "cocoa"',desktop)
+  self.assertIn('com.memorybox.desktop.plist',desktop)
 
- def test_v14_windows_uses_red_cavalry_icon_and_native_association(self):
-  wf=(ROOT/'.github/workflows/build-windows.yml').read_text(encoding='utf-8')
-  assoc=(ROOT/'Register-Transfer-Association.ps1').read_text(encoding='utf-8')
-  self.assertIn('--icon assets/icons/windows/MemoryBox.ico',wf)
-  self.assertIn('MemoryBox.exe',assoc)
+ def test_v16_harmonyos_native_stage_project_contract(self):
+  h=ROOT/'harmonyos'/'MemoryBoxHarmony'
+  required=[
+   h/'AppScope'/'app.json5',
+   h/'entry'/'src'/'main'/'module.json5',
+   h/'entry'/'src'/'main'/'ets'/'entryability'/'EntryAbility.ets',
+   h/'entry'/'src'/'main'/'ets'/'pages'/'Index.ets',
+   h/'entry'/'src'/'main'/'ets'/'services'/'MemoryStore.ets',
+   h/'entry'/'src'/'main'/'resources'/'base'/'media'/'app_icon.png',
+  ]
+  self.assertTrue(all(x.is_file() for x in required))
+  self.assertIn('"apiType": "stageMode"',(h/'entry'/'build-profile.json5').read_text(encoding='utf-8'))
+  self.assertIn("@kit.ArkData",(h/'entry'/'src'/'main'/'ets'/'services'/'MemoryStore.ets').read_text(encoding='utf-8'))
+  self.assertIn('relationalStore',(h/'entry'/'src'/'main'/'ets'/'services'/'MemoryStore.ets').read_text(encoding='utf-8'))
 
- def test_v14_harmonyos_launch_contract(self):
-  import subprocess
-  r=subprocess.run([sys.executable,str(ROOT/'platforms'/'harmonyos'/'validate_project.py')],capture_output=True,text=True)
-  self.assertEqual(r.returncode,0,r.stderr); self.assertIn('PASS',r.stdout)
-  page=(ROOT/'platforms'/'harmonyos'/'entry'/'src'/'main'/'ets'/'pages'/'Index.ets').read_text(encoding='utf-8')
-  self.assertIn('Memory Box',page); self.assertIn('快速保存',page)
+ def test_v16_red_cavalry_icon_all_platforms(self):
+  self.assertGreater((ROOT/'assets'/'MemoryBox.ico').stat().st_size,1000)
+  self.assertGreater((ROOT/'assets'/'MemoryBox.icns').stat().st_size,1000)
+  hicon=ROOT/'harmonyos'/'MemoryBoxHarmony'/'entry'/'src'/'main'/'resources'/'base'/'media'/'app_icon.png'
+  self.assertGreater(hicon.stat().st_size,1000)
 
-if __name__=='__main__': unittest.main()
+ def test_v16_release_workflows_keep_model_optional_and_local(self):
+  nw=(ROOT/'.github/workflows/build-neural-model-pack.yml').read_text(encoding='utf-8')
+  ww=(ROOT/'.github/workflows/build-windows.yml').read_text(encoding='utf-8')
+  mw=(ROOT/'.github/workflows/build-macos.yml').read_text(encoding='utf-8')
+  self.assertIn('model-install',nw)
+  self.assertIn('release-models',ww)
+  self.assertIn('release-models',mw)
+  self.assertIn('--collect-all fastembed',ww)
+  self.assertIn('--collect-all fastembed',mw)

@@ -70,7 +70,7 @@ class T(unittest.TestCase):
   try:
    cols=[r[1] for r in con.execute('pragma table_info(memories)')]
    self.assertIn('source_uri',cols)
-   self.assertEqual(con.execute("select value from meta where key='schema_version'").fetchone()[0],'8')
+   self.assertEqual(con.execute("select value from meta where key='schema_version'").fetchone()[0],'10')
   finally: con.close()
   x=save_memory('web memory',source_agent='ChatGPT Web',source_uri='https://chatgpt.com/c/test',db_path=self.db)
   self.assertEqual(x['source_uri'],'https://chatgpt.com/c/test'); self.assertIn('https://chatgpt.com/c/test',compose_context([x['memory_id']],self.db))
@@ -210,7 +210,7 @@ class T(unittest.TestCase):
   from memorybox.lan import start_pairing, send_pack, stop_pairing
   db_a=Path(self.t.name)/'la'/'box.db'; db_b=Path(self.t.name)/'lb'/'box.db'; m=save_memory('LAN direct transfer memory',db_path=db_a)
   pack=Path(self.t.name)/'lan.mboxpack'; export_transfer_bundle(pack,memory_ids=[m['memory_id']],db_path=db_a)
-  st=start_pairing(port=0,db_path=db_b)
+  st=start_pairing(port=0,ttl=60,db_path=db_b)
   try:
    r=send_pack('127.0.0.1',st['port'],st['code'],pack,db_path=db_a); self.assertTrue(r['ok']); self.assertTrue(r['encrypted']); self.assertTrue(r['e2ee']); self.assertEqual(get_memory('M000001',db_b)['content'],'LAN direct transfer memory')
   finally: stop_pairing()
@@ -219,7 +219,7 @@ class T(unittest.TestCase):
   from memorybox.transfer import export_transfer_bundle
   from memorybox.lan import start_pairing, send_pack, stop_pairing
   db_a=Path(self.t.name)/'wa'/'box.db'; db_b=Path(self.t.name)/'wb'/'box.db'; m=save_memory('secret',db_path=db_a)
-  pack=Path(self.t.name)/'wrong.mboxpack'; export_transfer_bundle(pack,memory_ids=[m['memory_id']],db_path=db_a); st=start_pairing(port=0,db_path=db_b)
+  pack=Path(self.t.name)/'wrong.mboxpack'; export_transfer_bundle(pack,memory_ids=[m['memory_id']],db_path=db_a); st=start_pairing(port=0,ttl=60,db_path=db_b)
   try:
    with self.assertRaisesRegex(RuntimeError,'LAN transfer failed'): send_pack('127.0.0.1',st['port'],'000000' if st['code']!='000000' else '999999',pack,db_path=db_a)
   finally: stop_pairing()
@@ -427,3 +427,114 @@ class T(unittest.TestCase):
   files=list((shared/'MemoryBoxSync'/'insurance').glob('*/*.mboxenc')); self.assertEqual(len(files),2)
 
 if __name__=='__main__': unittest.main()
+
+# v0.14 Project Workspace + intelligent local retrieval
+class ProjectWorkspaceT(unittest.TestCase):
+ def setUp(self):
+  self.t=tempfile.TemporaryDirectory(); self.db=Path(self.t.name)/'box.db'
+ def tearDown(self): self.t.cleanup()
+ def test_v14_project_workspace_resume(self):
+  from memorybox.projects import create_project, add_memory_to_project, get_project, update_project, project_resume
+  a=save_memory('CRAB Batch 2 completed; next verify Tier-A evidence',title='CRAB Stage 2 result',tags=['CRAB','Tier-A'],db_path=self.db)
+  b=save_memory('Prepare JGAR manuscript discussion after audit',title='JGAR revision plan',tags=['CRAB','JGAR'],db_path=self.db)
+  p=create_project('CRAB manuscript',summary='Move audited CRAB analysis toward publication',current_state='Stage 2 complete',next_action='Verify Tier-A evidence',db_path=self.db)
+  add_memory_to_project(p['project_id'],a['memory_id'],role='evidence',db_path=self.db); add_memory_to_project(p['project_id'],b['memory_id'],role='next-step',db_path=self.db)
+  update_project(p['project_id'],next_action='Draft results after Tier-A verification',db_path=self.db)
+  got=get_project(p['project_id'],db_path=self.db); self.assertEqual(got['memory_count'],2); self.assertEqual(len(got['memories']),2)
+  r=project_resume(p['project_id'],db_path=self.db); self.assertIn('Memory Box Project Resume',r['context']); self.assertIn('CRAB manuscript',r['context']); self.assertIn('Draft results',r['context']); self.assertGreaterEqual(len(r['memory_ids']),1)
+
+ def test_v14_smart_search_ranking_and_project_filter(self):
+  from memorybox.projects import create_project, add_memory_to_project
+  from memorybox.retrieval import smart_search
+  exact=save_memory('Important evidence about a resistance mechanism',title='OmpA docking mechanism',tags=['OmpA'],db_path=self.db)
+  other=save_memory('OmpA appears once in a long generic note about many unrelated topics',title='General notes',db_path=self.db)
+  unrelated=save_memory('Travel planning and hotel notes',title='Trip',db_path=self.db)
+  hits=smart_search('OmpA docking mechanism',db_path=self.db,limit=10)
+  self.assertEqual(hits[0]['memory_id'],exact['memory_id']); self.assertGreater(hits[0]['retrieval_score'],hits[-1]['retrieval_score'] if len(hits)>1 else 0)
+  p=create_project('Mechanism paper',db_path=self.db); add_memory_to_project(p['project_id'],other['memory_id'],db_path=self.db)
+  phits=smart_search('OmpA',project_id=p['project_id'],db_path=self.db); self.assertEqual([x['memory_id'] for x in phits],[other['memory_id']])
+  self.assertNotIn(unrelated['memory_id'],[x['memory_id'] for x in hits])
+
+ def test_v14_transfer_preserves_projects_and_links(self):
+  from memorybox.projects import create_project, add_memory_to_project, get_project
+  from memorybox.transfer import export_transfer_bundle, import_transfer_bundle, inspect_transfer_bundle
+  src=Path(self.t.name)/'src.db'; dst=Path(self.t.name)/'dst.db'
+  m=save_memory('portable project memory',title='Project decision',db_path=src)
+  p=create_project('Portable Project',summary='Cross-device project workspace',current_state='ready',next_action='continue',db_path=src)
+  add_memory_to_project(p['project_id'],m['memory_id'],role='decision',db_path=src)
+  pack=Path(self.t.name)/'project.mboxpack'; ex=export_transfer_bundle(pack,memory_ids=[m['memory_id']],db_path=src)
+  self.assertEqual(ex['project_count'],1); self.assertEqual(inspect_transfer_bundle(pack)['project_count'],1)
+  r=import_transfer_bundle(pack,db_path=dst); self.assertEqual(r['projects_imported'],1)
+  pid=r['project_mapping'][p['project_id']]; got=get_project(pid,db_path=dst); self.assertEqual(got['name'],'Portable Project'); self.assertEqual(got['memory_count'],1); self.assertEqual(got['memories'][0]['role'],'decision')
+  r2=import_transfer_bundle(pack,db_path=dst); self.assertEqual(r2['projects_imported'],0); self.assertGreaterEqual(r2['projects_skipped'],1)
+
+
+# v0.16 local vector retrieval, dedup review and derived project continuity
+class SemanticMemoryT(unittest.TestCase):
+ def setUp(self):
+  self.t=tempfile.TemporaryDirectory(); self.db=Path(self.t.name)/'box.db'
+ def tearDown(self): self.t.cleanup()
+
+ def test_v15_vector_cache_and_search(self):
+  from memorybox.semantic import backend_status, rebuild_vectors, vector_search
+  a=save_memory('OmpA protein docking with berberine and molecular dynamics validation',title='OmpA docking mechanism',summary='Docking and MD mechanism',db_path=self.db)
+  save_memory('Hotel itinerary and museum opening times in Datong',title='Datong trip',db_path=self.db)
+  st=backend_status(); self.assertTrue(st['local_only'])
+  built=rebuild_vectors(db_path=self.db); self.assertEqual(built['total'],2); self.assertGreaterEqual(built['dimension'],1)
+  hits=vector_search('protein docking mechanism molecular dynamics',db_path=self.db,limit=2)
+  self.assertEqual(hits[0]['memory_id'],a['memory_id']); self.assertGreater(hits[0]['vector_score'],hits[-1]['vector_score'])
+
+ def test_v15_smart_search_exposes_vector_evidence(self):
+  from memorybox.retrieval import smart_search
+  a=save_memory('carbapenem resistance OmpA membrane mechanism and docking evidence',title='CRAB OmpA',db_path=self.db)
+  hits=smart_search('OmpA membrane docking',db_path=self.db)
+  self.assertEqual(hits[0]['memory_id'],a['memory_id']); self.assertIn('vector_score',hits[0]); self.assertGreater(hits[0]['vector_score'],0)
+
+ def test_v15_dedup_suggests_but_does_not_mutate(self):
+  from memorybox.dedup import find_duplicates
+  a=save_memory('Final decision: use feature-specific observation masks for the CRAB audit.',title='CRAB audit decision',summary='Use feature-specific masks',db_path=self.db)
+  b=save_memory('Final decision: use feature-specific observation masks for the CRAB audit.',title='CRAB audit decision copy',summary='Use feature-specific masks',db_path=self.db)
+  xs=find_duplicates(a['memory_id'],db_path=self.db,threshold=.7)
+  self.assertTrue(xs); self.assertEqual(xs[0]['memory_id'],b['memory_id']); self.assertTrue(xs[0]['exact'])
+  self.assertFalse(get_memory(a['memory_id'],self.db)['archived']); self.assertFalse(get_memory(b['memory_id'],self.db)['archived'])
+
+ def test_v15_explicit_dedup_merge_preserves_projects(self):
+  from memorybox.dedup import merge_duplicate_memories
+  from memorybox.projects import create_project, add_memory_to_project, get_project
+  a=save_memory('same core evidence alpha',title='A',db_path=self.db); b=save_memory('same core evidence alpha',title='B',db_path=self.db)
+  p=create_project('Evidence Project',db_path=self.db); add_memory_to_project(p['project_id'],a['memory_id'],role='evidence',db_path=self.db); add_memory_to_project(p['project_id'],b['memory_id'],role='evidence',db_path=self.db)
+  m=merge_duplicate_memories([a['memory_id'],b['memory_id']],archive_sources=False,db_path=self.db)
+  self.assertIn(p['project_id'],m['projects_preserved']); self.assertEqual(get_project(p['project_id'],db_path=self.db)['memory_count'],3)
+  self.assertFalse(get_memory(a['memory_id'],self.db)['archived'])
+
+ def test_v15_project_auto_insights_never_overwrite_manual_fields(self):
+  from memorybox.projects import create_project, add_memory_to_project, get_project, refresh_project_insights
+  p=create_project('CRAB paper',summary='Curated human summary',current_state='',next_action='',db_path=self.db)
+  m=save_memory('Tier-A evidence verified. Next step draft the Results section.',title='Audit update',summary='Tier-A verified; next step draft Results',db_path=self.db)
+  add_memory_to_project(p['project_id'],m['memory_id'],role='next-step',db_path=self.db)
+  got=refresh_project_insights(p['project_id'],db_path=self.db)
+  self.assertEqual(got['summary'],'Curated human summary'); self.assertTrue(got['auto_summary']); self.assertTrue(got['auto_next_action']); self.assertTrue(got['auto_updated_at'])
+
+class PlatformV16CoreT(unittest.TestCase):
+ def test_v16_model_status_is_safe_without_optional_runtime(self):
+  from memorybox.model_manager import model_status, DEFAULT_MODEL_ID, DEFAULT_MODEL_DIM
+  with tempfile.TemporaryDirectory() as td:
+   st=model_status(Path(td))
+   self.assertEqual(st['model_id'],DEFAULT_MODEL_ID)
+   self.assertEqual(st['dimension'],DEFAULT_MODEL_DIM)
+   self.assertTrue(st['local_only_after_install'])
+   self.assertTrue(st['download_is_explicit'])
+
+ def test_v16_webview_platform_selection(self):
+  from memorybox.desktop import _webview_gui_for_platform
+  self.assertEqual(_webview_gui_for_platform('Windows'),'edgechromium')
+  self.assertEqual(_webview_gui_for_platform('Darwin'),'cocoa')
+  self.assertIsNone(_webview_gui_for_platform('Linux'))
+
+ def test_v16_mac_launch_agent_plist_is_per_user_and_minimized(self):
+  import plistlib
+  from memorybox.desktop import _mac_launch_agent_plist
+  doc=plistlib.loads(_mac_launch_agent_plist('/Applications/MemoryBox.app/Contents/MacOS/MemoryBox'))
+  self.assertEqual(doc['Label'],'com.memorybox.desktop')
+  self.assertTrue(doc['RunAtLoad'])
+  self.assertIn('--minimized',doc['ProgramArguments'])

@@ -1,0 +1,7 @@
+{
+  "string": [
+    { "name": "module_desc", "value": "Memory Box HarmonyOS native client" },
+    { "name": "EntryAbility_desc", "value": "Memory Box" },
+    { "name": "EntryAbility_label", "value": "Memory Box" }
+  ]
+}

@@ -12,19 +12,25 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install build/runtime dependencies
-        run: python -m pip install --upgrade pip pyinstaller ".[desktop]"
-      - name: Build native desktop EXE
+        run: python -m pip install --upgrade pip pyinstaller ".[desktop,semantic]"
+      - name: Install pinned local neural model cache
+        run: python memorybox_main.py model-install
+      - name: Stage bundled model cache
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release-models | Out-Null
+          Copy-Item "$HOME\.memorybox\models\bge-small-zh-v1.5-fastembed" -Destination release-models -Recurse -Force
+      - name: Build native desktop EXE folder
         run: >-
-          pyinstaller --noconfirm --clean --onefile --windowed
-          --name MemoryBox
-          --icon assets/icons/windows/MemoryBox.ico
-          --add-data "assets/icons/master.png;assets/icons"
+          pyinstaller --noconfirm --clean --onedir --windowed
+          --name MemoryBox --icon assets/MemoryBox.ico --add-data "assets;assets" --add-data "release-models;models"
+          --collect-all fastembed --collect-all onnxruntime
           --exclude-module PyQt5 --exclude-module PyQt6 --exclude-module PySide2 --exclude-module PySide6
           memorybox_desktop.py
       - name: Build CLI/MCP EXE
         run: >-
           pyinstaller --noconfirm --clean --onefile --console
-          --name MemoryBox-CLI
+          --name MemoryBox-CLI --collect-all fastembed --collect-all onnxruntime
           memorybox_main.py
       - name: Smoke-test CLI build
         shell: pwsh
@@ -34,11 +40,16 @@ jobs:
       - name: Assemble Windows release
         shell: pwsh
         run: |
-          Copy-Item integrations -Destination dist\integrations -Recurse
-          Copy-Item docs -Destination dist\docs -Recurse
-          Copy-Item MemoryBox.bat,MemoryBox-MCP.cmd,MemoryBox-Import.cmd,MemoryBox-Recover.cmd,Register-Transfer-Association.cmd,Register-Transfer-Association.ps1,Install-Browser-Bridge.cmd,MemoryBox-Auto-Insurance.cmd,Enable-Auto-Insurance.cmd,Enable-Auto-Insurance.ps1,Disable-Auto-Insurance.cmd,Disable-Auto-Insurance.ps1,README.md,README.zh-CN.md,LICENSE -Destination dist\
-          Compress-Archive -Path dist\* -DestinationPath Universal-Memory-Box-Windows-${{ github.ref_name }}.zip -Force
+          $R = "dist\MemoryBox"
+          Copy-Item dist\MemoryBox-CLI.exe -Destination "$R\MemoryBox-CLI.exe" -Force
+          Copy-Item integrations -Destination "$R\integrations" -Recurse
+          Copy-Item docs -Destination "$R\docs" -Recurse
+          Copy-Item assets\memorybox-red-cavalry.png -Destination "$R\memorybox-red-cavalry.png"
+          Set-Content "$R\MemoryBox-MCP.cmd" -Value "@echo off`r`n`"%~dp0MemoryBox-CLI.exe`" mcp`r`n" -Encoding ASCII
+          Set-Content "$R\Start-MemoryBox.cmd" -Value "@echo off`r`nstart `"`" `"%~dp0MemoryBox.exe`" %*`r`n" -Encoding ASCII
+          Copy-Item README.md,README.zh-CN.md,LICENSE,Install-Neural-Model.cmd -Destination $R
+          Compress-Archive -Path "$R\*" -DestinationPath MemoryBox-Windows-${{ github.ref_name }}.zip -Force
       - uses: actions/upload-artifact@v4
         with:
-          name: Universal-Memory-Box-Windows
-          path: Universal-Memory-Box-Windows-${{ github.ref_name }}.zip
+          name: MemoryBox-Windows
+          path: MemoryBox-Windows-${{ github.ref_name }}.zip

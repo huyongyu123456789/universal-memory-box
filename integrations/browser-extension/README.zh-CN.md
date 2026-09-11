@@ -1,4 +1,4 @@
-# Memory Box Browser Bridge v0.14.0
+# Memory Box Browser Bridge v0.16.0
 
 适用于 ChatGPT Web、Kimi Web、Claude Web、Gemini Web、DeepSeek Web、豆包、腾讯元宝，以及其他普通网页聊天。
 

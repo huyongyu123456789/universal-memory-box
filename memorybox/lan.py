@@ -10,7 +10,6 @@ import tempfile
 import threading
 import time
 import urllib.request
-from urllib.error import HTTPError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -22,7 +21,6 @@ DISCOVERY_PORT = 18768
 PAIR_TTL_SECONDS = 300
 _ACTIVE = None
 _LOCK = threading.Lock()
-_LOCAL_HTTP_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def _device_name() -> str:
@@ -172,7 +170,7 @@ def send_pack(host: str, port: int, code: str, package_path: str | os.PathLike[s
     # Query the receiver identity inside the short-lived pairing window. The
     # one-time code authenticates the transfer; the X25519 key encrypts it.
     try:
-        with _LOCAL_HTTP_OPENER.open(f'http://{host}:{int(port)}/ping',timeout=min(timeout,10)) as r:
+        with urllib.request.urlopen(f'http://{host}:{int(port)}/ping',timeout=min(timeout,10)) as r:
             peer=json.loads(r.read())
     except Exception as exc:
         raise RuntimeError(f"LAN peer identity lookup failed: {exc}") from exc
@@ -188,11 +186,7 @@ def send_pack(host: str, port: int, code: str, package_path: str | os.PathLike[s
     req=urllib.request.Request(f'http://{host}:{int(port)}/receive',data=raw,method='POST',headers={
         'Content-Type':'application/octet-stream','X-MemoryBox-Auth':auth,'Content-Length':str(len(raw))})
     try:
-        with _LOCAL_HTTP_OPENER.open(req,timeout=timeout) as r:
+        with urllib.request.urlopen(req,timeout=timeout) as r:
             result=json.loads(r.read()); result['e2ee']=True; result['peer_fingerprint']=peer.get('e2ee_fingerprint'); return result
-    except HTTPError as exc:
-        detail = exc.read().decode('utf-8', errors='replace').strip()
-        suffix = f': {detail}' if detail else ''
-        raise RuntimeError(f"LAN transfer failed: HTTP {exc.code}{suffix}") from exc
     except Exception as exc:
         raise RuntimeError(f"LAN transfer failed: {exc}") from exc

@@ -13,7 +13,7 @@ Write-Host "Installing Memory Box to $InstallDir"
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
 # Copy application files, excluding runtime/data/build artifacts.
-$items = @("memorybox", "integrations", "docs", "assets", "memorybox_main.py", "memorybox_desktop.py", "MemoryBox.bat", "MemoryBox-MCP.cmd", "MemoryBox-Import.cmd", "MemoryBox-Recover.cmd", "Register-Transfer-Association.cmd", "Register-Transfer-Association.ps1", "Install-Browser-Bridge.cmd", "Add-Baidu-Netdisk-Sync.cmd", "Add-Baidu-Netdisk-Sync.ps1", "MemoryBox-Auto-Insurance.cmd", "Enable-Auto-Insurance.cmd", "Enable-Auto-Insurance.ps1", "Disable-Auto-Insurance.cmd", "Disable-Auto-Insurance.ps1", "LICENSE", "README.md", "README.zh-CN.md")
+$items = @("memorybox", "integrations", "docs", "assets", "memorybox_main.py", "memorybox_desktop.py", "MemoryBox.bat", "MemoryBox-MCP.cmd", "MemoryBox-Import.cmd", "MemoryBox-Recover.cmd", "Register-Transfer-Association.cmd", "Register-Transfer-Association.ps1", "Install-Browser-Bridge.cmd", "Install-Neural-Model.cmd", "Add-Baidu-Netdisk-Sync.cmd", "Add-Baidu-Netdisk-Sync.ps1", "MemoryBox-Auto-Insurance.cmd", "Enable-Auto-Insurance.cmd", "Enable-Auto-Insurance.ps1", "Disable-Auto-Insurance.cmd", "Disable-Auto-Insurance.ps1", "LICENSE", "README.md", "README.zh-CN.md")
 foreach ($item in $items) {
     $src = Join-Path $Source $item
     if (Test-Path $src) { Copy-Item $src -Destination $InstallDir -Recurse -Force }
@@ -47,10 +47,10 @@ if ($pth) {
     Set-Content -Path $pth.FullName -Value $updated -Encoding ASCII
 }
 
-# v0.14 desktop runtime: cryptography + pywebview + tray support live only inside Memory Box's private Python.
+# v0.13 desktop runtime: cryptography + pywebview + tray support live only inside Memory Box's private Python.
 $Py = Join-Path $RuntimeDir "python.exe"
 try {
-    & $Py -c "import cryptography, webview, pystray, PIL; assert int(cryptography.__version__.split('.')[0]) >= 46" 2>$null
+    & $Py -c "import cryptography, webview, pystray, PIL, fastembed; assert int(cryptography.__version__.split('.')[0]) >= 46" 2>$null
     $DesktopReady = ($LASTEXITCODE -eq 0)
 } catch { $DesktopReady = $false }
 if (-not $DesktopReady) {
@@ -59,7 +59,7 @@ if (-not $DesktopReady) {
     Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile $GetPip -UseBasicParsing
     & $Py $GetPip --disable-pip-version-check
     Remove-Item $GetPip -Force -ErrorAction SilentlyContinue
-    & $Py -m pip install --disable-pip-version-check "cryptography>=46,<47" "pywebview>=6.1,<7" "pystray>=0.19.5,<0.20" "Pillow>=10,<13"
+    & $Py -m pip install --disable-pip-version-check "cryptography>=46,<47" "pywebview>=6.1,<7" "pystray>=0.19.5,<0.20" "Pillow>=10,<13" "fastembed>=0.7.4,<0.9"
     if ($LASTEXITCODE -ne 0) { throw "Unable to install Memory Box desktop runtime." }
 }
 
@@ -71,8 +71,6 @@ $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
 $Shortcut.TargetPath = Join-Path $InstallDir "MemoryBox.bat"
 $Shortcut.WorkingDirectory = $InstallDir
 $Shortcut.Description = "Local AI Agent Memory Box"
-$IconPath = Join-Path $InstallDir "assets\icons\windows\MemoryBox.ico"
-if (Test-Path $IconPath) { $Shortcut.IconLocation = $IconPath }
 $Shortcut.Save()
 
 # Create Browser Bridge setup shortcut.
@@ -138,6 +136,21 @@ Set-Item -Path $RecOpenKey -Value ('"' + $RecoverCmd + '" "%1"')
 Write-Host "Initializing local SQLite database and E2EE identity..."
 & (Join-Path $RuntimeDir "python.exe") (Join-Path $InstallDir "memorybox_main.py") list --limit 1 | Out-Null
 & (Join-Path $RuntimeDir "python.exe") (Join-Path $InstallDir "memorybox_main.py") identity | Out-Null
+
+# v0.16 neural retrieval: first install tries to fetch the pinned ~90 MB BGE ONNX model.
+# Failure is non-fatal; Memory Box keeps the dependency-free hashing fallback.
+if ($env:MEMORYBOX_SKIP_NEURAL_MODEL -ne "1") {
+    try {
+        $Status = & $Py (Join-Path $InstallDir "memorybox_main.py") model-status | ConvertFrom-Json
+        if (-not $Status.ready) {
+            Write-Host "Installing local BGE semantic model (~90 MB, one-time download)..."
+            & $Py (Join-Path $InstallDir "memorybox_main.py") model-install
+            if ($LASTEXITCODE -ne 0) { Write-Warning "Neural model installation failed; Memory Box will use the local hashing fallback." }
+        }
+    } catch {
+        Write-Warning "Neural model setup skipped: $($_.Exception.Message)"
+    }
+}
 
 Write-Host "Memory Box installed successfully. Opening..."
 Start-Process (Join-Path $InstallDir "MemoryBox.bat")

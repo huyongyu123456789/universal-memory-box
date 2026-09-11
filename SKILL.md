@@ -66,3 +66,35 @@ On Windows, prefer the native `MemoryBox.exe` shell for human-facing Memory Box 
 ## Desktop control center (v0.12)
 
 When guiding a human user through Memory Box itself, prefer the v0.12 local control-center pages: **首页**, **记忆**, **保存**, **Agent**, **同步**, **自动保险**, **灾难恢复**, **迁移**, and **设置**. The UI is local-first and supports Light/Dark/Auto appearance. Do not claim the UI is an Apple product; it only uses an Apple-inspired low-noise design language.
+
+## Project workspace behavior (v0.14)
+
+When the user refers to a long-running named project, prefer a first-class Project Workspace instead of inventing many unrelated memory cards. Project state should capture: project summary, current state, next action, and linked evidence/decision/context memories.
+
+Natural-language examples:
+- “Create a project for this work.” → `memory_project_create`
+- “Add M000007 to this project as evidence.” → `memory_project_add`
+- “Find memories that probably belong to this project.” → `memory_project_suggest`
+- “Continue the CRAB project.” → resolve the project, then `memory_project_resume`
+- “Search my memory for the earlier Tier-A decision.” → `memory_smart_search`
+
+Smart retrieval in v0.14 is an offline hybrid lexical/metadata ranker, not a neural embedding service. Do not describe it as semantic-vector retrieval unless a later version actually enables such a backend.
+
+
+## Local vector retrieval and duplicate hygiene (v0.16)
+
+- `memory_smart_search` now combines lexical/project signals with a fully local vector similarity signal.
+- `memory_vector_search` can be used when approximate wording matters.
+- The default vector backend is `hashing-v1`; if an existing local SentenceTransformer model is explicitly configured, Memory Box may use it without cloud calls.
+- Use `memory_dedup_find` / `memory_dedup_scan` to review duplicate candidates. Never merge merely because a similarity score is high.
+- Use `memory_dedup_merge` only after the user clearly requests consolidation. Preserve source memories unless the user asks to archive them.
+- `memory_project_refresh` updates derived automatic continuity fields only and must not overwrite user-authored project summary/state/next-action.
+
+
+## Local neural retrieval (v0.16)
+
+When `memory_semantic_status` reports the BGE/FastEmbed backend as ready, prefer smart/vector retrieval for approximate wording. Do not install or download a model on the user's behalf through MCP. Model installation is a local human-controlled operation; if unavailable, continue with the hashing/lexical fallback.
+
+## Platform notes
+
+Windows and macOS desktop builds share the same Memory Box core. HarmonyOS uses the separate native ArkTS/ArkUI client foundation. Do not claim HarmonyOS feature parity until the relevant native transport/import path has been implemented and built with the HarmonyOS SDK.

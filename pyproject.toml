@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "memory-box-agent-memory"
-version = "0.14.0"
+version = "0.16.0"
 description = "Local-first SQLite memory box and MCP bridge for AI agents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -14,8 +14,7 @@ dependencies = ["cryptography>=46,<47"]
 
 [project.optional-dependencies]
 desktop = ["pywebview>=6.1,<7", "pystray>=0.19.5,<0.20", "Pillow>=10,<13"]
-test = ["Pillow>=10,<13"]
-macos = ["pyobjc-core>=10,<13", "pyobjc-framework-Cocoa>=10,<13", "pyobjc-framework-Quartz>=10,<13", "pyobjc-framework-WebKit>=10,<13", "pyobjc-framework-Security>=10,<13"]
+semantic = ["fastembed>=0.7.4,<0.9"]
 build = ["pyinstaller>=6,<7"]
 
 [project.scripts]

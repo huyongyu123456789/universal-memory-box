@@ -1,4 +1,4 @@
-name: Build macOS apps
+name: Build macOS desktop app
 on:
   workflow_dispatch:
   push:
@@ -6,55 +6,83 @@ on:
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15
-            arch: arm64
-          - runner: macos-15-intel
-            arch: x86_64
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install build/runtime dependencies
-        run: python -m pip install --upgrade pip pyinstaller ".[desktop,macos]"
-      - name: Build app icon
-        run: iconutil -c icns assets/icons/macos/MemoryBox.iconset -o assets/icons/macos/MemoryBox.icns
-      - name: Build native macOS app bundle
+      - name: Install runtime and build dependencies
+        run: python -m pip install --upgrade pip pyinstaller ".[desktop,semantic]"
+      - name: Install pinned local neural model cache
+        run: python memorybox_main.py model-install
+      - name: Stage bundled model cache
+        run: |
+          mkdir -p release-models
+          cp -R "$HOME/.memorybox/models/bge-small-zh-v1.5-fastembed" release-models/
+      - name: Build MemoryBox.app
         run: >-
-          pyinstaller --noconfirm --clean --onedir --windowed --argv-emulation
-          --name "Memory Box"
-          --icon assets/icons/macos/MemoryBox.icns
+          pyinstaller --noconfirm --clean --onedir --windowed
+          --name MemoryBox --icon assets/MemoryBox.icns
           --osx-bundle-identifier com.memorybox.desktop
-          --add-data "assets/icons/master.png:assets/icons"
+          --add-data "assets:assets" --add-data "release-models:models"
           memorybox_desktop.py
-      - name: Build CLI/MCP binary
+      - name: Build CLI
         run: >-
           pyinstaller --noconfirm --clean --onefile --console
-          --name MemoryBox-CLI
-          memorybox_main.py
-      - name: Add Finder document associations
-        run: python platforms/macos/postprocess_plist.py "dist/Memory Box.app/Contents/Info.plist"
+          --name MemoryBox-CLI --collect-all fastembed --collect-all onnxruntime memorybox_main.py
+      - name: Add document associations to app Info.plist
+        run: |
+          /usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes array" dist/MemoryBox.app/Contents/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0 dict" dist/MemoryBox.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:CFBundleTypeName string 'Memory Box Package'" dist/MemoryBox.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:CFBundleTypeRole string 'Editor'" dist/MemoryBox.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:CFBundleTypeExtensions array" dist/MemoryBox.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:CFBundleTypeExtensions:0 string mboxpack" dist/MemoryBox.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:CFBundleTypeExtensions:1 string mboxenc" dist/MemoryBox.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:CFBundleTypeExtensions:2 string mbxrecovery" dist/MemoryBox.app/Contents/Info.plist
+      - name: Import Developer ID certificate
+        if: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/memorybox.keychain-db"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p actions "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p actions "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions "$KEYCHAIN"
+      - name: Sign application
+        if: ${{ secrets.MACOS_SIGN_IDENTITY != '' }}
+        env:
+          IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          codesign --force --deep --options runtime --timestamp --sign "$IDENTITY" dist/MemoryBox.app
+          codesign --verify --deep --strict --verbose=2 dist/MemoryBox.app
       - name: Ad-hoc sign development artifact
-        run: codesign --deep --force --sign - "dist/Memory Box.app"
-      - name: Validate app bundle and launch entry
+        if: ${{ secrets.MACOS_SIGN_IDENTITY == '' }}
+        run: codesign --force --deep --sign - dist/MemoryBox.app
+      - name: Assemble DMG
         run: |
-          plutil -lint "dist/Memory Box.app/Contents/Info.plist"
-          codesign --verify --deep --strict "dist/Memory Box.app"
-          "dist/Memory Box.app/Contents/MacOS/Memory Box" --help >/dev/null
-          ./dist/MemoryBox-CLI --help >/dev/null
-      - name: Assemble macOS release
+          rm -rf dmg-root && mkdir dmg-root
+          cp -R dist/MemoryBox.app dmg-root/
+          cp dist/MemoryBox-CLI dmg-root/
+          ln -s /Applications dmg-root/Applications
+          hdiutil create -volname "Memory Box" -srcfolder dmg-root -ov -format UDZO MemoryBox-macOS-${{ github.ref_name }}.dmg
+      - name: Notarize and staple
+        if: ${{ secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' && secrets.MACOS_SIGN_IDENTITY != '' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
-          mkdir -p release
-          ditto -c -k --sequesterRsrc --keepParent "dist/Memory Box.app" "release/MemoryBox-macOS-${{ matrix.arch }}.zip"
-          cp dist/MemoryBox-CLI release/MemoryBox-CLI
-          cp README.md README.zh-CN.md LICENSE release/
-          hdiutil create -volname "Memory Box" -srcfolder "dist/Memory Box.app" -ov -format UDZO "release/MemoryBox-macOS-${{ matrix.arch }}.dmg"
-      - uses: actions/upload-artifact@v4
+          xcrun notarytool submit MemoryBox-macOS-${{ github.ref_name }}.dmg --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple MemoryBox-macOS-${{ github.ref_name }}.dmg
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: Universal-Memory-Box-macOS-${{ matrix.arch }}
-          path: release/*
+          name: MemoryBox-macOS
+          path: MemoryBox-macOS-${{ github.ref_name }}.dmg

@@ -3,12 +3,11 @@ from __future__ import annotations
 import json
 import os
 import platform
-import plistlib
-import subprocess
 import socket
 import sys
 import threading
 import time
+import plistlib
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -23,7 +22,6 @@ from .webapp import start_server
 APP_NAME = "Memory Box"
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_VALUE = "MemoryBox"
-MAC_LAUNCH_AGENT_LABEL = "com.memorybox.desktop"
 
 DEFAULT_DESKTOP_SETTINGS: dict[str, Any] = {
     "minimize_to_tray": True,
@@ -70,16 +68,13 @@ def is_macos() -> bool:
     return platform.system().lower() == "darwin"
 
 
-def mac_launch_agent_path() -> Path:
-    return Path.home() / "Library" / "LaunchAgents" / f"{MAC_LAUNCH_AGENT_LABEL}.plist"
-
-
-def _resource_path(relative: str) -> Path:
-    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
-    candidate = base / relative
-    if candidate.exists():
-        return candidate
-    return Path(__file__).resolve().parents[1] / relative
+def _webview_gui_for_platform(system: str | None = None) -> str | None:
+    name = (system or platform.system()).lower()
+    if name == "windows":
+        return "edgechromium"
+    if name == "darwin":
+        return "cocoa"
+    return None
 
 
 def _startup_command(executable: str | None = None) -> str:
@@ -95,8 +90,30 @@ def _startup_command(executable: str | None = None) -> str:
     return f'"{exe_path}" "{main}" --minimized'
 
 
+def _mac_launch_agent_path(home: Path | None = None) -> Path:
+    # LaunchAgents must live in the user's Library, not inside MEMORYBOX_HOME.
+    return Path.home() / "Library" / "LaunchAgents" / "com.memorybox.desktop.plist"
+
+
+def _mac_launch_agent_plist(executable: str | None = None) -> bytes:
+    exe = str(Path(executable or sys.executable).resolve())
+    frozen = bool(getattr(sys, "frozen", False))
+    if frozen:
+        args = [exe, "--minimized"]
+    else:
+        main = Path(__file__).resolve().parents[1] / "memorybox_desktop.py"
+        args = [exe, str(main), "--minimized"]
+    payload = {
+        "Label": "com.memorybox.desktop",
+        "ProgramArguments": args,
+        "RunAtLoad": True,
+        "KeepAlive": False,
+        "ProcessType": "Interactive",
+    }
+    return plistlib.dumps(payload, fmt=plistlib.FMT_XML, sort_keys=True)
+
+
 def set_start_on_login(enabled: bool, *, executable: str | None = None, home: Path | None = None) -> dict[str, Any]:
-    settings = load_desktop_settings(home)
     if is_windows():
         import winreg
         command = _startup_command(executable)
@@ -108,33 +125,29 @@ def set_start_on_login(enabled: bool, *, executable: str | None = None, home: Pa
                     winreg.DeleteValue(key, RUN_VALUE)
                 except FileNotFoundError:
                     pass
+        settings = load_desktop_settings(home)
         settings["start_on_login"] = bool(enabled)
         save_desktop_settings(settings, home)
-        return {"supported": True, "enabled": bool(enabled), "command": command if enabled else None, "platform": "Windows"}
-
+        return {"supported": True, "platform": "Windows", "enabled": bool(enabled), "command": command if enabled else None}
     if is_macos():
-        plist_path = mac_launch_agent_path()
-        plist_path.parent.mkdir(parents=True, exist_ok=True)
-        exe = str(Path(executable or sys.executable).resolve())
+        import subprocess
+        p = _mac_launch_agent_path(home)
+        uid = os.getuid() if hasattr(os, "getuid") else None
         if enabled:
-            payload = {
-                "Label": MAC_LAUNCH_AGENT_LABEL,
-                "ProgramArguments": [exe, "--minimized"],
-                "RunAtLoad": True,
-                "KeepAlive": False,
-                "ProcessType": "Interactive",
-            }
-            plist_path.write_bytes(plistlib.dumps(payload, fmt=plistlib.FMT_XML, sort_keys=True))
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(_mac_launch_agent_plist(executable))
+            if uid is not None:
+                subprocess.run(["launchctl", "bootout", f"gui/{uid}", str(p)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(["launchctl", "bootstrap", f"gui/{uid}", str(p)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
-            try:
-                plist_path.unlink()
-            except FileNotFoundError:
-                pass
+            if uid is not None and p.exists():
+                subprocess.run(["launchctl", "bootout", f"gui/{uid}", str(p)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            p.unlink(missing_ok=True)
+        settings = load_desktop_settings(home)
         settings["start_on_login"] = bool(enabled)
         save_desktop_settings(settings, home)
-        return {"supported": True, "enabled": bool(enabled), "launch_agent": str(plist_path) if enabled else None, "platform": "macOS"}
-
-    return {"supported": False, "enabled": False, "reason": "Start-on-login is currently supported on Windows and macOS."}
+        return {"supported": True, "platform": "macOS", "enabled": bool(enabled), "launch_agent": str(p)}
+    return {"supported": False, "enabled": False, "reason": "Startup integration is currently supported on Windows and macOS."}
 
 
 def get_start_on_login(*, home: Path | None = None) -> bool:
@@ -147,7 +160,7 @@ def get_start_on_login(*, home: Path | None = None) -> bool:
         except Exception:
             return False
     if is_macos():
-        return mac_launch_agent_path().exists()
+        return _mac_launch_agent_path(home).exists()
     return bool(load_desktop_settings(home).get("start_on_login", False))
 
 
@@ -189,16 +202,18 @@ def _free_port() -> int:
 
 def _make_tray_icon_image():
     from PIL import Image, ImageDraw
-    icon_path = _resource_path("assets/icons/master.png")
-    if icon_path.exists():
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
+    branded = base / "assets" / "memorybox-red-cavalry.png"
+    if branded.is_file():
         try:
-            return Image.open(icon_path).convert("RGBA").resize((128, 128), Image.Resampling.LANCZOS)
+            return Image.open(branded).convert("RGBA").resize((128, 128), Image.Resampling.LANCZOS)
         except Exception:
             pass
     image = Image.new("RGBA", (128, 128), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
     draw.rounded_rectangle((10, 10, 118, 118), radius=30, fill=(29, 29, 31, 255))
-    draw.polygon([(24,82),(42,38),(69,26),(98,42),(109,71),(88,96),(56,105)], fill=(220,38,38,255))
+    draw.rounded_rectangle((31, 31, 97, 97), radius=18, outline=(255, 255, 255, 235), width=7)
+    draw.line((48, 63, 63, 78, 83, 49), fill=(255, 255, 255, 245), width=7, joint="curve")
     return image
 
 
@@ -273,6 +288,7 @@ class DesktopBridge:
         return {
             "desktop": True,
             "platform": platform.system(),
+            "native_gui": _webview_gui_for_platform(),
             "settings": settings,
             "home": str(self.home),
         }
@@ -467,8 +483,7 @@ def run_desktop(paths: Iterable[str] | None = None, *, minimized: bool = False, 
 
     try:
         tray.run_detached()
-        gui = "edgechromium" if is_windows() else None
-        webview.start(desktop_start, window, gui=gui, debug=False)
+        webview.start(desktop_start, window, gui=_webview_gui_for_platform(), debug=False)
     finally:
         bridge.quitting = True
         try:

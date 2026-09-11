@@ -6,18 +6,38 @@ Memory Box 把聊天中的关键上下文保存到你自己的电脑，并通过
 
 
 
-## GitHub 一键发布
 
-Windows 解压源码后可直接双击 `Publish-To-GitHub.cmd`，脚本会把 `main` 和 `v0.14.0` 标签推送到已配置的 GitHub 仓库。标签会触发 Windows 与 macOS 构建，`main` 推送同时触发 CI 和 HarmonyOS 工程校验。详见 `docs/GITHUB_RELEASE.md`。
+## v0.16：本地神经语义检索 + Windows / macOS / HarmonyOS 三平台发行基础
 
-## v0.14：Windows + macOS + HarmonyOS 多平台应用
+Memory Box v0.16 把语义检索正式产品化：新增可选的 **BAAI/bge-small-zh-v1.5** 本地模型，通过 **FastEmbed + ONNX Runtime** 运行。模型为 512 维，安装/发行阶段才会明确下载；普通搜索绝不会偷偷联网拉模型。安装后检索强制使用本地缓存，神经运行时不可用时自动退回 `hashing-v1`，软件仍可正常工作。
 
-v0.14 把 Memory Box 正式扩展为三端应用，并统一使用**红色骑兵**图标。Windows 继续使用无黑框的 `MemoryBox.exe`；macOS 新增原生 `Memory Box.app`，基于 Cocoa/WKWebView，分别构建 Apple Silicon 与 Intel 版本；HarmonyOS 新增 API 26.0.0 Stage/ArkTS 原生 companion，适配手机、平板和 2in1。
+平台方面，Windows 继续使用 pywebview/WebView2 原生桌面壳；macOS 新增 Cocoa/WebKit 构建流程，可生成 `MemoryBox.app + .dmg`，并预留 Developer ID 签名与 Apple Notarization；HarmonyOS NEXT 则新增独立的 **ArkTS/ArkUI Stage 模型原生工程**，并使用 HarmonyOS `relationalStore` 做本地 RDB，不把 Python Web 壳冒充成鸿蒙原生应用。
 
-启动方式已经按系统习惯固定：Windows **双击 `MemoryBox.exe`**；macOS **双击 `Memory Box.app`**；HarmonyOS 安装后**点击桌面 Memory Box 图标**直接进入 `EntryAbility`。Windows/macOS 的 `.mboxpack`、`.mboxenc` 会走现有校验导入链；`.mbxrecovery` 仍保留人工恢复码确认。macOS Release 会同时产出 `.app` ZIP 与 `.dmg`。详见 `docs/MULTIPLATFORM.md`。
+```bash
+memorybox model-status
+memorybox model-install
+memorybox vectors-rebuild
+memorybox vector-search "OmpA mechanism"
+```
 
-> 两个必须如实说明的发布条件：macOS 要想在任意陌生 Mac 上首次就无 Gatekeeper 阻拦地双击打开，需要 Apple Developer ID 签名并完成 notarization；HarmonyOS Release HAP/APP 需要 DevEco Studio/AppGallery Connect 的有效签名配置后才能安装到真机。工程的启动入口已经配置好，但签名凭据不能凭空生成。
+详见 `docs/NEURAL_MODEL.md`、`docs/PLATFORMS.md`、`macos/README.md` 与 `harmonyos/MemoryBoxHarmony/README.md`。
 
+## v0.14：Project Workspace + 智能记忆检索
+
+Memory Box 现在把长期任务提升为真正的 **项目工作区**，而不是只靠零散的 `M000xxx` 记忆卡。每个项目拥有稳定的 `P000001` 编号，并可记录项目摘要、当前状态、下一步行动和生命周期状态。
+
+新的本地智能检索会综合标题、摘要、标签、正文、项目关联、更新时间、置顶和收藏信号进行排序，并加入近似文本匹配。它完全在本机运行，不把记忆内容发送给云端模型；v0.14 也不会把这套算法冒充成神经网络 embedding。
+
+典型用法：
+
+```bash
+memorybox project-create "CRAB 稿件" --summary "严格审计后的投稿修订" --current-state "Stage 2 完成" --next-action "复核 Tier-A 证据"
+memorybox project-add P000001 M000007 --role evidence
+memorybox smart-search "Tier-A 复核" --project P000001
+memorybox project-resume P000001
+```
+
+`.mboxpack` 已升级到 transfer format v3，跨电脑迁移时会一起保存项目本身以及“项目 ↔ 记忆”的关联关系。
 
 ## v0.13：真正的 Windows 桌面程序壳
 
@@ -46,6 +66,9 @@ Memory Box 现在可以按周期把**整个记忆库、历史版本、元数据�
 - 记忆列表：稳定 ID（`M000001`）+ 分类 + 标签 + 更新时间
 - 分类：科研、论文、编程、数据分析、教学、项目、旅行、个人、其他
 - 搜索：SQLite FTS5（不可用时自动退回 LIKE 搜索）
+- 本地向量检索：默认 hashing-v1，可选 BGE-small-zh-v1.5 + FastEmbed/ONNX
+- 重复记忆：先发现候选、再人工确认合并，保留项目关联
+- 项目自动摘要：只写派生字段，不覆盖手工项目说明
 - 置顶 / 收藏 / 归档
 - 追加记忆并保留版本快照
 - 查找相关记忆
@@ -53,7 +76,7 @@ Memory Box 现在可以按周期把**整个记忆库、历史版本、元数据�
 - “把与某项目有关的记忆都调出来”并自动组合成 Resume Context
 - 从 Universal Agent Memory v0.3 的 JSON vault 导入
 - MCP Server：Agent 可直接调用保存、列表、打开、追加、恢复、合并等工具
-- Browser Bridge v0.14：ChatGPT/Kimi/Claude/Gemini/DeepSeek/豆包/元宝网页端可选中保存、保存当前聊天、选择本地附件、搜索旧记忆并把 Resume Context 填回当前聊天输入框
+- Browser Bridge v0.13：ChatGPT/Kimi/Claude/Gemini/DeepSeek/豆包/元宝网页端可选中保存、保存当前聊天、选择本地附件、搜索旧记忆并把 Resume Context 填回当前聊天输入框
 - 完整会话胶囊：PDF、Word、图片、CSV、代码、日志等附件与记忆一起打包迁移
 - 附件去重：按 SHA-256 内容寻址，同一文件被多条记忆引用时只存一份
 - 网页来源追溯：保存 `source_agent + source_uri`，旧数据库自动迁移到 schema v8
@@ -68,6 +91,11 @@ Memory Box 现在可以按周期把**整个记忆库、历史版本、元数据�
 6. 之后可从开始菜单直接打开 **Memory Box**。
 
 > 源码桌面版可运行：`python memorybox_main.py desktop`；只需要浏览器模式时仍可运行 `python memorybox_main.py app`。
+
+## macOS 与 HarmonyOS
+
+- **macOS**：GitHub Actions 的 `Build macOS desktop app` 会生成 `.app + .dmg`。要做到从网络下载后直接双击无 Gatekeeper 阻拦，需要配置 Apple Developer 的 Developer ID 签名和 Notarization 凭据。
+- **HarmonyOS NEXT**：`harmonyos/MemoryBoxHarmony` 是独立的 ArkTS/ArkUI Stage 模型工程，可在 DevEco Studio 中打开；正式 HAP/APP 发布仍需要华为开发者签名配置。v0.16 已完成原生 UI + 本地 RDB 基础，但不会虚假宣称 E2EE/迁移包全功能已经在真机编译验证。
 
 ## 在聊天里怎么用
 
@@ -175,7 +203,7 @@ memorybox session-pack TransferFolder M000007 --folder
 
 > `.mboxpack` v2 是纯数据格式，不执行包内代码。附件和元数据都会校验 SHA-256，且默认不导出原电脑绝对路径。当前版本未加密，敏感包仍应按私密文件处理。
 
-## Browser Bridge v0.14：网页 AI + 附件
+## Browser Bridge v0.13：网页 AI + 附件
 
 网页端继续支持“保存选中对话 / 保存当前聊天 / 搜索 / 恢复到当前输入框”，并新增**本地附件选择**。你可以在扩展中选 PDF、Word、图片、CSV、代码文件等，然后点击“保存当前聊天”，文件会挂在新建记忆下并进入同一个本地附件库。
 
@@ -253,6 +281,15 @@ SQLite 使用 WAL 模式。Memory Box 不要求云账号，不内置遥测，不
 - `memory_merge`
 - `memory_pin`
 - `memory_favorite`
+- `memory_smart_search`
+- `memory_project_create`
+- `memory_projects`
+- `memory_project_get`
+- `memory_project_update`
+- `memory_project_add`
+- `memory_project_remove`
+- `memory_project_suggest`
+- `memory_project_resume`
 - `memory_export_pack`
 - `memory_import_pack`
 - `memory_inspect_pack`
