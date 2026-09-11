@@ -7,6 +7,13 @@ on:
 jobs:
   build:
     runs-on: macos-latest
+    env:
+      MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -42,7 +49,7 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:CFBundleTypeExtensions:1 string mboxenc" dist/MemoryBox.app/Contents/Info.plist
           /usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:CFBundleTypeExtensions:2 string mbxrecovery" dist/MemoryBox.app/Contents/Info.plist
       - name: Import Developer ID certificate
-        if: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
+        if: ${{ env.MACOS_CERT_P12_BASE64 != '' }}
         env:
           CERT_P12: ${{ secrets.MACOS_CERT_P12_BASE64 }}
           CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
@@ -56,14 +63,14 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions "$KEYCHAIN"
       - name: Sign application
-        if: ${{ secrets.MACOS_SIGN_IDENTITY != '' }}
+        if: ${{ env.MACOS_SIGN_IDENTITY != '' }}
         env:
           IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
         run: |
           codesign --force --deep --options runtime --timestamp --sign "$IDENTITY" dist/MemoryBox.app
           codesign --verify --deep --strict --verbose=2 dist/MemoryBox.app
       - name: Ad-hoc sign development artifact
-        if: ${{ secrets.MACOS_SIGN_IDENTITY == '' }}
+        if: ${{ env.MACOS_SIGN_IDENTITY == '' }}
         run: codesign --force --deep --sign - dist/MemoryBox.app
       - name: Assemble DMG
         run: |
@@ -73,7 +80,7 @@ jobs:
           ln -s /Applications dmg-root/Applications
           hdiutil create -volname "Memory Box" -srcfolder dmg-root -ov -format UDZO MemoryBox-macOS-${{ github.ref_name }}.dmg
       - name: Notarize and staple
-        if: ${{ secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' && secrets.MACOS_SIGN_IDENTITY != '' }}
+        if: ${{ env.APPLE_ID != '' && env.APPLE_TEAM_ID != '' && env.APPLE_APP_PASSWORD != '' && env.MACOS_SIGN_IDENTITY != '' }}
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
