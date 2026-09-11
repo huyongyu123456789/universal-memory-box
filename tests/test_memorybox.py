@@ -210,7 +210,7 @@ class T(unittest.TestCase):
   from memorybox.lan import start_pairing, send_pack, stop_pairing
   db_a=Path(self.t.name)/'la'/'box.db'; db_b=Path(self.t.name)/'lb'/'box.db'; m=save_memory('LAN direct transfer memory',db_path=db_a)
   pack=Path(self.t.name)/'lan.mboxpack'; export_transfer_bundle(pack,memory_ids=[m['memory_id']],db_path=db_a)
-  st=start_pairing(port=0,ttl=60,db_path=db_b)
+  st=start_pairing(port=0,db_path=db_b)
   try:
    r=send_pack('127.0.0.1',st['port'],st['code'],pack,db_path=db_a); self.assertTrue(r['ok']); self.assertTrue(r['encrypted']); self.assertTrue(r['e2ee']); self.assertEqual(get_memory('M000001',db_b)['content'],'LAN direct transfer memory')
   finally: stop_pairing()
@@ -219,7 +219,7 @@ class T(unittest.TestCase):
   from memorybox.transfer import export_transfer_bundle
   from memorybox.lan import start_pairing, send_pack, stop_pairing
   db_a=Path(self.t.name)/'wa'/'box.db'; db_b=Path(self.t.name)/'wb'/'box.db'; m=save_memory('secret',db_path=db_a)
-  pack=Path(self.t.name)/'wrong.mboxpack'; export_transfer_bundle(pack,memory_ids=[m['memory_id']],db_path=db_a); st=start_pairing(port=0,ttl=60,db_path=db_b)
+  pack=Path(self.t.name)/'wrong.mboxpack'; export_transfer_bundle(pack,memory_ids=[m['memory_id']],db_path=db_a); st=start_pairing(port=0,db_path=db_b)
   try:
    with self.assertRaisesRegex(RuntimeError,'LAN transfer failed'): send_pack('127.0.0.1',st['port'],'000000' if st['code']!='000000' else '999999',pack,db_path=db_a)
   finally: stop_pairing()
