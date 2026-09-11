@@ -19,7 +19,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force release-models | Out-Null
-          Copy-Item "$HOME\.memorybox\models\bge-small-zh-v1.5-fastembed" -Destination release-models -Recurse -Force
+          Copy-Item "$env:LOCALAPPDATA\MemoryBox\models\bge-small-zh-v1.5-fastembed" -Destination release-models -Recurse -Force
       - name: Build native desktop EXE folder
         run: >-
           pyinstaller --noconfirm --clean --onedir --windowed
