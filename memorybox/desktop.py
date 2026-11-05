@@ -338,6 +338,34 @@ class DesktopBridge:
             pass
 
 
+class _DesktopApi:
+    """Minimal JS-facing API surface.
+
+    pywebview serializes the whole `js_api` object graph into JavaScript when
+    the window loads. Exposing the full DesktopBridge (which references the
+    window, which references the bridge again, and whose .NET native objects
+    contain self-referential properties such as Rectangle.Empty) makes that
+    serialization recurse until it blows the stack and can stall the GUI
+    thread. The local UI only needs these four methods, so expose exactly
+    those through a cycle-free facade.
+    """
+
+    def __init__(self, bridge: "DesktopBridge"):
+        self._bridge = bridge
+
+    def get_desktop_status(self):
+        return self._bridge.get_desktop_status()
+
+    def set_minimize_to_tray(self, enabled: bool):
+        return self._bridge.set_minimize_to_tray(enabled)
+
+    def set_start_on_login(self, enabled: bool):
+        return self._bridge.set_start_on_login(enabled)
+
+    def set_notifications(self, enabled: bool):
+        return self._bridge.set_notifications(enabled)
+
+
 def _bind_drag_drop(window, bridge: DesktopBridge):
     try:
         from webview.dom import DOMEventHandler
@@ -397,7 +425,7 @@ def run_desktop(paths: Iterable[str] | None = None, *, minimized: bool = False, 
     window = webview.create_window(
         APP_NAME,
         url=url,
-        js_api=bridge,
+        js_api=_DesktopApi(bridge),
         width=1280,
         height=820,
         min_size=(900, 620),
