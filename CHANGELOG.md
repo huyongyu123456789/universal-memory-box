@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.1 - 2026-11-12
+
+- Fixed desktop GUI hang ("not responding" window): pywebview `js_api` serialization previously walked the circular `window ↔ bridge` reference and self-referential .NET properties (`Rectangle.Empty`), causing infinite recursion in `get_functions` and freezing the GUI thread. The window now exposes a minimal `_DesktopApi` facade with only the four methods the UI uses (`get_desktop_status`, `set_minimize_to_tray`, `set_start_on_login`, `set_notifications`).
+- Added a timeline view to the memories page.
+- Published Windows v0.16.1 release artifacts (desktop + CLI), including the GUI-hang fix.
+
 ## 0.16.0 - 2026-09-11
 
 - Added optional BAAI/bge-small-zh-v1.5 neural embeddings through FastEmbed/ONNX Runtime (512 dimensions, ~90 MB model class).

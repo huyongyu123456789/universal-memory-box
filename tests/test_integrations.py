@@ -72,7 +72,7 @@ class T(unittest.TestCase):
  def test_browser_extension_v05_contract(self):
   ext=ROOT/'integrations'/'browser-extension'
   manifest=json.loads((ext/'manifest.json').read_text(encoding='utf-8'))
-  self.assertEqual(manifest['version'],'0.16.0')
+  self.assertEqual(manifest['version'],'0.16.1')
   self.assertIn('scripting',manifest['permissions'])
   self.assertIn('save-selection',manifest['commands'])
   bg=(ext/'background.js').read_text(encoding='utf-8')
@@ -244,7 +244,7 @@ class T(unittest.TestCase):
    try:
     base=f'http://127.0.0.1:{srv.server_address[1]}'
     html=urllib.request.urlopen(base+'/').read().decode()
-    for token in ['Private AI memory hub','data-view="home"','自动保险','设备同步','灾难恢复','memorybox-theme','prefers-color-scheme:dark','v0.16.0']:
+    for token in ['Private AI memory hub','data-view="home"','自动保险','设备同步','灾难恢复','memorybox-theme','prefers-color-scheme:dark','v0.16.1']:
      self.assertIn(token,html)
     self.assertNotIn('__VERSION__',html)
    finally:
@@ -317,7 +317,7 @@ class ProjectIntegrationT(unittest.TestCase):
     add=json.dumps({'memory_id':m['memory_id'],'role':'context'}).encode(); req=urllib.request.Request(base+f'/api/projects/{p["project_id"]}/memories',data=add,headers={'Content-Type':'application/json'},method='POST'); urllib.request.urlopen(req).read()
     got=json.loads(urllib.request.urlopen(base+f'/api/projects/{p["project_id"]}').read()); self.assertEqual(got['memory_count'],1)
     hits=json.loads(urllib.request.urlopen(base+f'/api/search/smart?query=project&project_id={p["project_id"]}').read()); self.assertTrue(hits)
-    html=urllib.request.urlopen(base+'/').read().decode(); self.assertIn('data-view="projects"',html); self.assertIn('智能相关度',html); self.assertIn('v0.16.0',html)
+    html=urllib.request.urlopen(base+'/').read().decode(); self.assertIn('data-view="projects"',html); self.assertIn('智能相关度',html); self.assertIn('v0.16.1',html)
    finally:
     srv.shutdown(); srv.server_close()
     if old is None: os.environ.pop('MEMORYBOX_HOME',None)
@@ -353,7 +353,7 @@ class SemanticIntegrationT(unittest.TestCase):
     st=json.loads(urllib.request.urlopen(base+'/api/semantic/status').read()); self.assertTrue(st['local_only'])
     hits=json.loads(urllib.request.urlopen(base+'/api/search/vector?query=semantic+memory').read()); self.assertTrue(hits)
     dup=json.loads(urllib.request.urlopen(base+f'/api/memories/{a["memory_id"]}/duplicates?threshold=0.7').read()); self.assertTrue(dup)
-    html=urllib.request.urlopen(base+'/').read().decode(); self.assertIn('本地向量检索',html); self.assertIn('查找重复',html); self.assertIn('v0.16.0',html)
+    html=urllib.request.urlopen(base+'/').read().decode(); self.assertIn('本地向量检索',html); self.assertIn('查找重复',html); self.assertIn('v0.16.1',html)
    finally:
     srv.shutdown(); srv.server_close()
     if old is None: os.environ.pop('MEMORYBOX_HOME',None)

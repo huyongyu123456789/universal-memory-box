@@ -1,4 +1,4 @@
-# Memory Box for HarmonyOS NEXT — v0.16.0
+# Memory Box for HarmonyOS NEXT — v0.16.1
 
 This is the native ArkTS/ArkUI **Stage model** foundation for Memory Box on HarmonyOS NEXT. It uses a local HarmonyOS RDB (SQLite-backed relationalStore) rather than embedding the Python desktop runtime.
 

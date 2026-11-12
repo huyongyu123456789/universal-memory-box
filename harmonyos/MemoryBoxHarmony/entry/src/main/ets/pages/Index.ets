@@ -68,7 +68,7 @@ struct Index {
             }
           }.width('100%')
 
-          Text('v0.16.0 · HarmonyOS native foundation')
+          Text('v0.16.1 · HarmonyOS native foundation')
             .fontSize(12).fontColor('#A1A1A6').margin({ top: 8, bottom: 18 })
         }
         .width('100%').padding({ left: 18, right: 18, top: 20 }).backgroundColor('#F5F5F7')
